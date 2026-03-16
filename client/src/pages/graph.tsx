@@ -42,8 +42,15 @@ import {
   Focus,
   MessageSquare,
   Box,
+  Network,
+  LayoutGrid,
+  TreePine,
+  List,
+  Circle,
+  Grid3X3,
 } from "lucide-react";
 import { useLocation } from "wouter";
+import { GroupedTiles, TreeView, ListView, RadialView, MatrixView } from "@/components/graph/views";
 
 // ------ Edge legend config ------
 
@@ -77,6 +84,16 @@ const edgeTypes: EdgeTypes = {
   animated: AnimatedEdge,
 };
 
+type ViewMode = "graph" | "tiles" | "tree" | "list" | "radial" | "matrix";
+const VIEW_OPTIONS: { mode: ViewMode; label: string; icon: React.ElementType }[] = [
+  { mode: "graph", label: "Graph", icon: Network },
+  { mode: "tiles", label: "Tiles", icon: LayoutGrid },
+  { mode: "tree", label: "Tree", icon: TreePine },
+  { mode: "list", label: "List", icon: List },
+  { mode: "radial", label: "Radial", icon: Circle },
+  { mode: "matrix", label: "Matrix", icon: Grid3X3 },
+];
+
 const allEntityTypes: EntityType[] = ["project", "mcp", "skill", "plugin", "markdown", "config"];
 const allGraphTypes: { type: string; label: string; icon: any; color: string }[] = [
   ...allEntityTypes.map((t) => ({ type: t, label: entityConfig[t].label, icon: entityConfig[t].icon, color: entityColors[t] })),
@@ -85,6 +102,9 @@ const allGraphTypes: { type: string; label: string; icon: any; color: string }[]
 ];
 
 export default function GraphPage() {
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try { return (localStorage.getItem("graph-view") as ViewMode) || "graph"; } catch { return "graph"; }
+  });
   const [activeTypes, setActiveTypes] = useState<string[]>(["project", "mcp", "skill", "plugin", "custom"]);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -108,10 +128,13 @@ export default function GraphPage() {
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
   }, [searchQuery]);
 
-  // Save layout preference
+  // Save layout preferences
   useEffect(() => {
     try { localStorage.setItem("graph-layout", layoutDir); } catch {}
   }, [layoutDir]);
+  useEffect(() => {
+    try { localStorage.setItem("graph-view", viewMode); } catch {}
+  }, [viewMode]);
 
   const toggleType = (type: string) => {
     setActiveTypes((prev) =>
@@ -380,6 +403,27 @@ export default function GraphPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* View mode selector */}
+          <div className="flex items-center bg-muted/50 rounded-md p-0.5">
+            {VIEW_OPTIONS.map(({ mode, label, icon: VIcon }) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                  viewMode === mode
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                title={label}
+              >
+                <VIcon className="h-3 w-3" />
+                <span className="hidden xl:inline">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="w-px h-5 bg-border" />
+
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
@@ -480,62 +524,107 @@ export default function GraphPage() {
               <span className="text-sm">Loading graph...</span>
             </div>
           </div>
-        ) : (
-          <ReactFlow
-            nodes={styledNodes}
-            edges={styledEdges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            onNodeClick={onNodeClick}
-            onNodeMouseEnter={onNodeMouseEnter}
-            onNodeMouseLeave={onNodeMouseLeave}
-            onInit={setRfInstance}
-            onPaneClick={() => setSelectedNode(null)}
-            fitView
-            fitViewOptions={{ padding: 0.1, maxZoom: 2 }}
-            minZoom={0.1}
-            maxZoom={3}
-            proOptions={{ hideAttribution: true }}
-            nodesDraggable
-            nodesConnectable={false}
-          >
-            <Background gap={24} size={1} color="hsl(216 34% 17% / 0.5)" />
-            <Controls
-              showInteractive={false}
-              className="!bg-card !border-border !shadow-lg"
-            />
-            <MiniMap
-              nodeColor={(node) => {
-                const gNode = node.data as unknown as GraphNode;
-                return gNode?.color || entityColors[gNode?.type] || "#64748b";
-              }}
-              maskColor="hsl(224 71% 4% / 0.8)"
-              style={{ backgroundColor: "hsl(224 71% 6%)", border: "1px solid hsl(216 34% 17%)" }}
-            />
-          </ReactFlow>
-        )}
+        ) : viewMode === "graph" ? (
+          <>
+            <ReactFlow
+              nodes={styledNodes}
+              edges={styledEdges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onNodeClick={onNodeClick}
+              onNodeMouseEnter={onNodeMouseEnter}
+              onNodeMouseLeave={onNodeMouseLeave}
+              onInit={setRfInstance}
+              onPaneClick={() => setSelectedNode(null)}
+              fitView
+              fitViewOptions={{ padding: 0.1, maxZoom: 2 }}
+              minZoom={0.1}
+              maxZoom={3}
+              proOptions={{ hideAttribution: true }}
+              nodesDraggable
+              nodesConnectable={false}
+            >
+              <Background gap={24} size={1} color="hsl(216 34% 17% / 0.5)" />
+              <Controls
+                showInteractive={false}
+                className="!bg-card !border-border !shadow-lg"
+              />
+              <MiniMap
+                nodeColor={(node) => {
+                  const gNode = node.data as unknown as GraphNode;
+                  return gNode?.color || entityColors[gNode?.type] || "#64748b";
+                }}
+                maskColor="hsl(224 71% 4% / 0.8)"
+                style={{ backgroundColor: "hsl(224 71% 6%)", border: "1px solid hsl(216 34% 17%)" }}
+              />
+            </ReactFlow>
 
-        {/* Search results count */}
-        {debouncedSearch && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 glass rounded-full px-3 py-1 text-xs text-muted-foreground border border-border/50 z-10">
-            {searchMatchIds.size} match{searchMatchIds.size !== 1 ? "es" : ""} for "{debouncedSearch}"
-          </div>
-        )}
+            {/* Search results count */}
+            {debouncedSearch && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 glass rounded-full px-3 py-1 text-xs text-muted-foreground border border-border/50 z-10">
+                {searchMatchIds.size} match{searchMatchIds.size !== 1 ? "es" : ""} for "{debouncedSearch}"
+              </div>
+            )}
 
-        {/* Edge Legend */}
-        {legendVisible && legendItems.length > 0 && (
-          <div className="absolute bottom-4 left-4 glass border rounded-lg p-3 shadow-lg max-w-[200px] z-10">
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
-              Connections
-            </div>
-            <div className="space-y-1.5">
-              {legendItems.map(([key, { color, label }]) => (
-                <div key={key} className="flex items-center gap-2">
-                  <div className="w-5 h-0.5 rounded-full" style={{ backgroundColor: color }} />
-                  <span className="text-[11px] text-foreground">{label}</span>
+            {/* Edge Legend */}
+            {legendVisible && legendItems.length > 0 && (
+              <div className="absolute bottom-4 left-4 glass border rounded-lg p-3 shadow-lg max-w-[200px] z-10">
+                <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  Connections
                 </div>
-              ))}
-            </div>
+                <div className="space-y-1.5">
+                  {legendItems.map(([key, { color, label }]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <div className="w-5 h-0.5 rounded-full" style={{ backgroundColor: color }} />
+                      <span className="text-[11px] text-foreground">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="h-full overflow-auto">
+            {viewMode === "tiles" && (
+              <GroupedTiles
+                nodes={graphData?.nodes || []}
+                edges={graphData?.edges || []}
+                onNodeClick={(node) => setSelectedNode(node)}
+                searchQuery={debouncedSearch}
+              />
+            )}
+            {viewMode === "tree" && (
+              <TreeView
+                nodes={graphData?.nodes || []}
+                edges={graphData?.edges || []}
+                onNodeClick={(node) => setSelectedNode(node)}
+                searchQuery={debouncedSearch}
+              />
+            )}
+            {viewMode === "list" && (
+              <ListView
+                nodes={graphData?.nodes || []}
+                edges={graphData?.edges || []}
+                onNodeClick={(node) => setSelectedNode(node)}
+                searchQuery={debouncedSearch}
+              />
+            )}
+            {viewMode === "radial" && (
+              <RadialView
+                nodes={graphData?.nodes || []}
+                edges={graphData?.edges || []}
+                onNodeClick={(node) => setSelectedNode(node)}
+                searchQuery={debouncedSearch}
+              />
+            )}
+            {viewMode === "matrix" && (
+              <MatrixView
+                nodes={graphData?.nodes || []}
+                edges={graphData?.edges || []}
+                onNodeClick={(node) => setSelectedNode(node)}
+                searchQuery={debouncedSearch}
+              />
+            )}
           </div>
         )}
       </div>
