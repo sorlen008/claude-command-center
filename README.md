@@ -21,9 +21,9 @@ Built for Claude Code power users who want a bird's-eye view of everything in th
 <details>
 <summary>More screenshots</summary>
 
-| Markdown Editor | Discovery |
-|-----------------|-----------|
-| ![Markdown](docs/screenshots/markdown.png) | ![Discovery](docs/screenshots/discovery.png) |
+| Discovery |
+|-----------|
+| ![Discovery](docs/screenshots/discovery.png) |
 
 </details>
 
