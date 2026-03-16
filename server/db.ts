@@ -28,6 +28,7 @@ export interface DBData {
 
 export const defaultAppSettings: AppSettings = {
   appName: "Command Center",
+  onboarded: false,
   scanPaths: {
     homeDir: null,
     claudeDir: null,
@@ -69,6 +70,7 @@ try {
     if (!data.customNodes) data.customNodes = [];
     if (!data.customEdges) data.customEdges = [];
     if (!data.entityOverrides) data.entityOverrides = {};
+    if (data.appSettings.onboarded === undefined) data.appSettings.onboarded = false;
   } else {
     data = defaultData();
   }

@@ -77,6 +77,86 @@
     --glow-amber: rgba(245, 158, 11, 0.4);
     --glow-cyan: rgba(6, 182, 212, 0.4);
   }
+
+  [data-theme="light"] {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 98%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 217 33% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 217 33% 93%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 85%;
+    --input: 214 32% 85%;
+    --ring: 217 91% 60%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --sidebar: 0 0% 97%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 85%;
+    --sidebar-primary: 224 71% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 33% 93%;
+    --sidebar-accent-foreground: 222 47% 11%;
+
+    --glow-blue: rgba(59, 130, 246, 0.2);
+    --glow-purple: rgba(168, 85, 247, 0.2);
+    --glow-green: rgba(34, 197, 94, 0.2);
+    --glow-amber: rgba(245, 158, 11, 0.2);
+    --glow-cyan: rgba(6, 182, 212, 0.2);
+  }
+
+  [data-theme="glass"] {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 216 34% 20%;
+    --input: 216 34% 20%;
+    --ring: 217 91% 60%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar: 222 47% 7%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-border: 216 34% 20%;
+    --sidebar-primary: 224 71% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 96%;
+
+    --glow-blue: rgba(59, 130, 246, 0.5);
+    --glow-purple: rgba(168, 85, 247, 0.5);
+    --glow-green: rgba(34, 197, 94, 0.5);
+    --glow-amber: rgba(245, 158, 11, 0.5);
+    --glow-cyan: rgba(6, 182, 212, 0.5);
+  }
 }
 
 @layer base {
@@ -208,6 +288,37 @@ pre code {
   background: hsl(var(--card) / 0.6);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
+}
+
+/* Glass theme: auto-apply backdrop-filter to cards */
+[data-theme="glass"] [class*="bg-card"] {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Glass theme: semi-transparent sidebar */
+[data-theme="glass"] aside {
+  background: hsl(222 47% 7% / 0.8) !important;
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+}
+
+/* Light theme: tone down the gradient mesh background */
+[data-theme="light"] #root::before {
+  opacity: 0.02;
+}
+
+/* Light theme: softer scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, hsl(var(--muted-foreground) / 0.15), hsl(var(--muted-foreground) / 0.1));
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, hsl(var(--muted-foreground) / 0.3), hsl(var(--muted-foreground) / 0.2));
+}
+
+/* Glass theme: boost the gradient mesh */
+[data-theme="glass"] #root::before {
+  opacity: 0.06;
 }
 
 /* Card hover lift */

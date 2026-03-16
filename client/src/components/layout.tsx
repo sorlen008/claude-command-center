@@ -7,6 +7,7 @@ import { useAppSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { SearchTrigger } from "@/components/global-search";
 import { SyncIndicator } from "@/components/sync-indicator";
 import { UpdateIndicator } from "@/components/update-indicator";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import {
   LayoutDashboard,
   FolderOpen,
@@ -105,7 +106,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
       <aside className={cn(
-        "border-r flex flex-col transition-all duration-200 relative bg-gradient-to-b from-[hsl(222_47%_5%)] via-[hsl(222_47%_6%)] to-[hsl(222_47%_4%)]",
+        "border-r flex flex-col transition-all duration-200 relative bg-sidebar",
         collapsed ? "w-14" : "w-56"
       )}>
         {/* Top gradient accent line */}
@@ -235,6 +236,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <UpdateIndicator collapsed={collapsed} />
         <div className="mx-3 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
         <SyncIndicator collapsed={collapsed} />
+        <div className="mx-3 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
+        <ThemeSwitcher collapsed={collapsed} />
         <div className="mx-3 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
         <button
           onClick={() => setCollapsed(!collapsed)}

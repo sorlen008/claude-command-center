@@ -350,6 +350,7 @@ export interface SessionStats {
 
 export interface AppSettings {
   appName: string;
+  onboarded: boolean;
   scanPaths: {
     homeDir: string | null;
     claudeDir: string | null;

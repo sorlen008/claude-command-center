@@ -7,6 +7,8 @@ import { Layout } from "@/components/layout";
 import { GlobalSearch } from "@/components/global-search";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useTheme } from "@/hooks/use-theme";
+import { OnboardingWizard } from "@/components/onboarding-wizard";
 import Dashboard from "@/pages/dashboard";
 import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
@@ -36,9 +38,11 @@ function DynamicTitle() {
 
 function Router() {
   useKeyboardShortcuts();
+  useTheme();
   return (
     <Layout>
       <DynamicTitle />
+      <OnboardingWizard />
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/projects" component={Projects} />

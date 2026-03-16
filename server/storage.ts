@@ -135,6 +135,7 @@ export class Storage {
   updateAppSettings(patch: Partial<AppSettings>): AppSettings {
     const db = getDB();
     if (patch.appName !== undefined) db.appSettings.appName = patch.appName;
+    if (patch.onboarded !== undefined) db.appSettings.onboarded = patch.onboarded;
     if (patch.scanPaths) {
       db.appSettings.scanPaths = { ...db.appSettings.scanPaths, ...patch.scanPaths };
     }

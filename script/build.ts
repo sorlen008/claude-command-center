@@ -29,6 +29,7 @@ async function buildAll() {
     bundle: true,
     format: "cjs",
     outfile: "dist/index.cjs",
+    banner: { js: "#!/usr/bin/env node" },
     define: {},
     minify: true,
     external: [...externals, "./vite"],
