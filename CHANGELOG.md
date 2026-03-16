@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-03-16
+
+### Fixed
+- Cost estimate formula was ~10x too low (treating all input tokens as cache reads)
+- Unknown session status defaulting to "thinking" instead of "stale"
+- Message parsing safety cap (2000 messages) to prevent OOM on large sessions
+
 ## [1.3.0] - 2026-03-16
 
 ### Added
