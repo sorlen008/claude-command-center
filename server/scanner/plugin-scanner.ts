@@ -27,15 +27,41 @@ export function scanPlugins(): Entity[] {
       const installLocation = config.installLocation?.replace(/\\/g, "/");
       const stat = installLocation ? getFileStat(installLocation) : null;
 
-      // Check if marketplace dir has plugins
+      // Check if marketplace dir has plugins.
+      // Marketplaces may organize plugins into container dirs like "plugins/" and
+      // "external_plugins/", so we look one level deeper when a top-level subdir
+      // doesn't have any plugin markers itself.
       const mktDir = path.join(pluginsDir, "marketplaces", marketplaceId).replace(/\\/g, "/");
-      let pluginDirs: string[] = [];
+      const pluginDirs: string[] = [];
+      const PLUGIN_MARKERS = ["SKILL.md", ".mcp.json", "CLAUDE.md", "manifest.json", "plugin.json", "package.json"];
+      const SKIP_DIRS = new Set([".git", ".claude-plugin", "node_modules"]);
       if (dirExists(mktDir)) {
         try {
-          pluginDirs = fs
+          const topDirs = fs
             .readdirSync(mktDir, { withFileTypes: true })
-            .filter((d) => d.isDirectory() && d.name !== ".git" && d.name !== ".claude-plugin")
-            .map((d) => d.name);
+            .filter((d) => d.isDirectory() && !SKIP_DIRS.has(d.name));
+
+          for (const d of topDirs) {
+            const fullPath = path.join(mktDir, d.name).replace(/\\/g, "/");
+            const hasMarker = PLUGIN_MARKERS.some((m) => fileExists(path.join(fullPath, m)));
+            const hasSkillsDir = dirExists(path.join(fullPath, "skills"));
+
+            if (hasMarker || hasSkillsDir) {
+              // This is an actual plugin directory
+              pluginDirs.push(d.name);
+            } else {
+              // Likely a container dir (e.g. "plugins/", "external_plugins/")
+              // — look one level deeper for actual plugins
+              try {
+                const subDirs = fs
+                  .readdirSync(fullPath, { withFileTypes: true })
+                  .filter((sd) => sd.isDirectory() && !SKIP_DIRS.has(sd.name));
+                for (const sd of subDirs) {
+                  pluginDirs.push(`${d.name}/${sd.name}`);
+                }
+              } catch {}
+            }
+          }
         } catch {}
       }
 
@@ -60,21 +86,22 @@ export function scanPlugins(): Entity[] {
       });
 
       // Create entities for individual plugins within marketplace
-      for (const pluginName of pluginDirs) {
-        const pluginKey = `${pluginName}@${marketplaceId}`;
+      for (const pluginRelPath of pluginDirs) {
+        const displayName = pluginRelPath.includes("/") ? pluginRelPath.split("/").pop()! : pluginRelPath;
+        const pluginKey = `${displayName}@${marketplaceId}`;
         const isBlocked = pluginKey in blocklist;
-        const pluginPath = path.join(mktDir, pluginName).replace(/\\/g, "/");
+        const pluginPath = path.join(mktDir, pluginRelPath).replace(/\\/g, "/");
         const hasMcp = fileExists(path.join(pluginPath, ".mcp.json"));
 
         const id = entityId(`plugin:${pluginKey}`);
-        const catalog = PLUGIN_CATALOG[pluginName];
+        const catalog = PLUGIN_CATALOG[displayName];
         const pluginTags = isBlocked ? ["blocked"] : [];
         if (catalog && !isBlocked) pluginTags.push(catalog.category);
 
         results.push({
           id,
           type: "plugin",
-          name: pluginName,
+          name: displayName,
           path: pluginPath,
           description: isBlocked ? `Blocked: ${blocklist[pluginKey].reason}` : (catalog?.description ?? null),
           lastModified: null,

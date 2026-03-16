@@ -14,6 +14,13 @@ function getStrArr(entity: Entity, key: string): string[] {
   return Array.isArray(val) ? val.filter((v): v is string => typeof v === "string") : [];
 }
 
+/** Check if a file path belongs to a project (path-based ownership) */
+function pathBelongsToProject(filePath: string, project: Entity): boolean {
+  const projectPath = project.path;
+  if (!projectPath) return false;
+  return filePath.startsWith(projectPath + "/");
+}
+
 export function buildRelationships(
   projects: Entity[],
   mcps: Entity[],
@@ -27,16 +34,20 @@ export function buildRelationships(
     if (dirName) projectByDir.set(dirName, p);
   }
 
+  // Track which entities get connected so we can link orphan MCPs/skills to all projects
+  const connectedMcps = new Set<string>();
+  const connectedSkills = new Set<string>();
+  const connectedPlugins = new Set<string>();
+
   // === Project <-> MCP relationships ===
   for (const mcp of mcps) {
     const isPlugin = mcp.tags.includes("plugin");
     const sourceFile = getStr(mcp, "sourceFile");
 
-    // MCP defined in a project's .mcp.json (not root)
-    if (!isPlugin && !sourceFile.endsWith("/.mcp.json")) {
+    // MCP defined inside a project directory (e.g. project/.mcp.json)
+    if (!isPlugin) {
       for (const project of projects) {
-        const dirName = getStr(project, "dirName");
-        if (dirName && sourceFile.includes(`/${dirName}/`)) {
+        if (pathBelongsToProject(sourceFile, project)) {
           storage.addRelationship({
             sourceId: project.id,
             sourceType: "project",
@@ -44,12 +55,13 @@ export function buildRelationships(
             targetType: "mcp",
             relation: "defines_mcp",
           });
+          connectedMcps.add(mcp.id);
         }
       }
     }
 
-    // Root MCPs: infer project by matching command/args paths
-    if (!isPlugin && sourceFile.endsWith("/.mcp.json")) {
+    // Root-level MCPs (~/.mcp.json): infer project by matching command/args paths
+    if (!isPlugin && !connectedMcps.has(mcp.id)) {
       const command = getStr(mcp, "command");
       const args = getStrArr(mcp, "args");
       const ref = `${command} ${args.join(" ")}`;
@@ -63,6 +75,7 @@ export function buildRelationships(
             targetType: "mcp",
             relation: "uses_mcp",
           });
+          connectedMcps.add(mcp.id);
         }
       }
     }
@@ -82,17 +95,36 @@ export function buildRelationships(
             targetType: "mcp",
             relation: "provides_mcp",
           });
+          connectedMcps.add(mcp.id);
+          connectedPlugins.add(plugin.id);
         }
       }
     }
   }
 
-  // === Project <-> Skill relationships (content-based inference) ===
+  // Global MCPs (not connected to any project) are available to all projects
+  for (const mcp of mcps) {
+    if (!connectedMcps.has(mcp.id) && !mcp.tags.includes("plugin")) {
+      for (const project of projects) {
+        storage.addRelationship({
+          sourceId: project.id,
+          sourceType: "project",
+          targetId: mcp.id,
+          targetType: "mcp",
+          relation: "uses_mcp",
+        });
+      }
+      connectedMcps.add(mcp.id);
+    }
+  }
+
+  // === Project <-> Skill relationships ===
   for (const skill of skills) {
-    const content = getStr(skill, "content");
+    const skillPath = skill.path || "";
+
+    // 1. Path-based: skill lives inside a project directory
     for (const project of projects) {
-      const dirName = getStr(project, "dirName");
-      if (dirName && (content.includes(dirName) || content.includes(project.name))) {
+      if (pathBelongsToProject(skillPath, project)) {
         storage.addRelationship({
           sourceId: project.id,
           sourceType: "project",
@@ -100,9 +132,54 @@ export function buildRelationships(
           targetType: "skill",
           relation: "has_skill",
         });
-        // Annotate skill with projectName for frontend display
         skill.data.projectName = project.name;
+        connectedSkills.add(skill.id);
       }
+    }
+
+    // 2. Content-based inference (fallback)
+    if (!connectedSkills.has(skill.id)) {
+      const content = getStr(skill, "content");
+      for (const project of projects) {
+        const dirName = getStr(project, "dirName");
+        if (dirName && (content.includes(dirName) || content.includes(project.name))) {
+          storage.addRelationship({
+            sourceId: project.id,
+            sourceType: "project",
+            targetId: skill.id,
+            targetType: "skill",
+            relation: "has_skill",
+          });
+          skill.data.projectName = project.name;
+          connectedSkills.add(skill.id);
+        }
+      }
+    }
+  }
+
+  // === Plugin <-> Skill relationships (skills that live inside a plugin) ===
+  // Match each skill to the most specific (deepest/longest path) plugin that contains it
+  for (const skill of skills) {
+    const skillPath = skill.path || "";
+    if (!skillPath.includes("/plugins/")) continue;
+    let bestPlugin: Entity | null = null;
+    let bestLen = 0;
+    for (const plugin of plugins) {
+      if (plugin.path && skillPath.startsWith(plugin.path + "/") && plugin.path.length > bestLen) {
+        bestPlugin = plugin;
+        bestLen = plugin.path.length;
+      }
+    }
+    if (bestPlugin) {
+      storage.addRelationship({
+        sourceId: bestPlugin.id,
+        sourceType: "plugin",
+        targetId: skill.id,
+        targetType: "skill",
+        relation: "has_skill",
+      });
+      connectedSkills.add(skill.id);
+      connectedPlugins.add(bestPlugin.id);
     }
   }
 
