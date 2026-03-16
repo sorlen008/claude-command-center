@@ -153,7 +153,10 @@ describe("validateMarkdownPath", () => {
 
   it("rejects path outside home directory", () => {
     expect(validateMarkdownPath("/etc/passwd")).toBeNull();
-    expect(validateMarkdownPath("C:\\Windows\\System32\\test.md")).toBeNull();
+    // Windows-style paths only rejected on Windows; on Linux, path.resolve treats them as relative
+    if (process.platform === "win32") {
+      expect(validateMarkdownPath("C:\\Windows\\System32\\test.md")).toBeNull();
+    }
   });
 
   it("rejects path traversal attempts", () => {
