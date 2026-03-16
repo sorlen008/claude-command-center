@@ -34,24 +34,8 @@ export function useApplyUpdate() {
       const res = await apiRequest("POST", "/api/update/apply");
       return res.json();
     },
-    onSuccess: (result) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/update/status"] });
-      if (result.success && result.restartRequired) {
-        // Server will restart in ~2s. Poll until it's back, then reload.
-        const poll = setInterval(async () => {
-          try {
-            const resp = await fetch("/health");
-            if (resp.ok) {
-              clearInterval(poll);
-              window.location.reload();
-            }
-          } catch {
-            // Server still restarting
-          }
-        }, 2000);
-        // Stop polling after 60s
-        setTimeout(() => clearInterval(poll), 60000);
-      }
     },
   });
 }

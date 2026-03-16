@@ -283,12 +283,6 @@ router.post("/api/update/apply", (_req: Request, res: Response) => {
     const success = !failed;
     if (success) {
       cachedStatus = null;
-
-      // Schedule auto-restart after response is sent
-      setTimeout(() => {
-        console.log("[update] Restarting server...");
-        process.exit(0); // Process manager or user restarts
-      }, 2000);
     }
 
     res.json({
