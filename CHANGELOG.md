@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-03-16
+
+### Fixed
+- Onboarding wizard not persisting -- settings PATCH route was dropping the `onboarded` field from request body
+
 ## [1.3.1] - 2026-03-16
 
 ### Fixed
