@@ -287,9 +287,10 @@ export default function GraphPage() {
     return { edges: edgeList, edgeLabelsInView: labelSet };
   }, [graphData?.edges, nodeIds, edgeLabelsVisible]);
 
-  // Hover highlighting
-  const { connectedNodeIds, connectedEdgeIds } = useMemo(() => {
-    if (!hoveredNodeId) return { connectedNodeIds: new Set<string>(), connectedEdgeIds: new Set<string>() };
+  // Hover highlighting — inject CSS custom properties instead of recreating node objects.
+  // This avoids React re-renders of all 173+ nodes on every hover change.
+  const connectedIds = useMemo(() => {
+    if (!hoveredNodeId) return null;
     const nIds = new Set<string>([hoveredNodeId]);
     const eIds = new Set<string>();
     for (const e of rawEdges) {
@@ -299,41 +300,38 @@ export default function GraphPage() {
         eIds.add(e.id);
       }
     }
-    return { connectedNodeIds: nIds, connectedEdgeIds: eIds };
+    return { nodeIds: nIds, edgeIds: eIds };
   }, [hoveredNodeId, rawEdges]);
 
-  // Apply dimming (hover takes priority, then selection path)
-  const styledNodes = useMemo(() => {
-    if (hoveredNodeId) {
-      return nodes.map((n) => ({
-        ...n,
-        className: connectedNodeIds.has(n.id) ? "" : "dimmed",
-      }));
+  // Generate a <style> tag for hover dimming — pure CSS, zero re-renders
+  const hoverStyleTag = useMemo(() => {
+    if (connectedIds) {
+      // Dim everything, then un-dim connected nodes/edges
+      const nodeSelectors = Array.from(connectedIds.nodeIds).map((id) => `.react-flow__node[data-id="${id}"] .graph-node`).join(",\n");
+      const edgeSelectors = Array.from(connectedIds.edgeIds).map((id) => `.react-flow__edge[data-id="${id}"] path`).join(",\n");
+      return `
+        .react-flow__node .graph-node { opacity: 0.15; }
+        .react-flow__edge path { opacity: 0.06; }
+        ${nodeSelectors} { opacity: 1; }
+        ${edgeSelectors ? `${edgeSelectors} { opacity: 1; filter: drop-shadow(0 0 3px currentColor); }` : ""}
+      `;
     }
     if (selectedNode && pathNodeIds.size > 1) {
-      return nodes.map((n) => ({
-        ...n,
-        className: pathNodeIds.has(n.id) ? "" : "dimmed",
-      }));
+      const nodeSelectors = Array.from(pathNodeIds).map((id) => `.react-flow__node[data-id="${id}"] .graph-node`).join(",\n");
+      const edgeSelectors = Array.from(pathEdgeIds).map((id) => `.react-flow__edge[data-id="${id}"] path`).join(",\n");
+      return `
+        .react-flow__node .graph-node { opacity: 0.15; }
+        .react-flow__edge path { opacity: 0.06; }
+        ${nodeSelectors} { opacity: 1; }
+        ${edgeSelectors ? `${edgeSelectors} { opacity: 1; filter: drop-shadow(0 0 3px currentColor); }` : ""}
+      `;
     }
-    return nodes;
-  }, [nodes, hoveredNodeId, connectedNodeIds, selectedNode, pathNodeIds]);
+    return null;
+  }, [connectedIds, selectedNode, pathNodeIds, pathEdgeIds]);
 
-  const styledEdges = useMemo(() => {
-    if (hoveredNodeId) {
-      return rawEdges.map((e) => ({
-        ...e,
-        className: connectedEdgeIds.has(e.id) ? "highlighted" : "dimmed",
-      }));
-    }
-    if (selectedNode && pathEdgeIds.size > 0) {
-      return rawEdges.map((e) => ({
-        ...e,
-        className: pathEdgeIds.has(e.id) ? "highlighted" : "dimmed",
-      }));
-    }
-    return rawEdges;
-  }, [rawEdges, hoveredNodeId, connectedEdgeIds, selectedNode, pathEdgeIds]);
+  // Stable references — never recreated on hover
+  const styledNodes = nodes;
+  const styledEdges = rawEdges;
 
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     const data = node.data as unknown as GraphNode;
@@ -545,6 +543,7 @@ export default function GraphPage() {
           </div>
         ) : viewMode === "graph" ? (
           <>
+            {hoverStyleTag && <style dangerouslySetInnerHTML={{ __html: hoverStyleTag }} />}
             <ReactFlow
               nodes={styledNodes}
               edges={styledEdges}
