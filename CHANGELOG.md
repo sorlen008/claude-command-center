@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-03-16
+
+### Added
+- **Smart update system** -- detects git clone vs npm install, uses appropriate update strategy
+- Auto-restart server after successful update
+- Auto-reload browser when server comes back online
+- npm global users get `npm update -g` instead of git pull
+
 ## [1.2.0] - 2026-03-16
 
 ### Added
