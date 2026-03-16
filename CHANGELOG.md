@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-03-16
+
+### Added
+- **APIs page** (`/apis`) for managing external API connections
+- **API config scanner** — `apis-config.yaml` for declaring external services
+- **Graph view modes** — 6 ways to view your ecosystem: Graph, Tiles, Tree, List, Radial, Matrix
+- **Restart button** with confirmation dialog after updates — spawns new server process, auto-reloads browser
+
+### Fixed
+- Server dying after update with no restart (removed `process.exit`, added proper restart endpoint)
+- Graph page view mode persistence
+
 ## [1.3.2] - 2026-03-16
 
 ### Fixed
