@@ -23,6 +23,7 @@ const EDGE_STYLES: Record<string, { color: string; strokeWidth: number; dashed?:
   depends_on:      { color: "#ef4444", strokeWidth: 2 },
   uses:            { color: "#f97316", strokeWidth: 1.5, dashed: true },
   shares_remote:   { color: "#34d399", strokeWidth: 1.5, dashed: true },
+  uses_api:        { color: "#f59e0b", strokeWidth: 2 },
 };
 
 // Custom node subtype colors

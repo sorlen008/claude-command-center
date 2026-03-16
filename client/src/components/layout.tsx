@@ -30,6 +30,7 @@ import {
   BarChart3,
   DollarSign,
   BookOpen,
+  Globe,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
@@ -48,6 +49,7 @@ const navSections = [
       { path: "/skills", label: "Skills", icon: Wand2, countKey: "skill" as const },
       { path: "/plugins", label: "Plugins", icon: Puzzle, countKey: "plugin" as const },
       { path: "/markdown", label: "Markdown", icon: FileText, countKey: "markdown" as const },
+      { path: "/apis", label: "APIs", icon: Globe, countKey: null },
     ],
   },
   {

@@ -11,7 +11,7 @@ export interface CustomNode {
   url?: string;
   icon?: string;
   color?: string;
-  source: "manual" | "config-file" | "ai-suggested" | "docker-compose" | "auto-discovered";
+  source: "manual" | "config-file" | "api-config" | "ai-suggested" | "docker-compose" | "auto-discovered";
 }
 
 export interface CustomEdge {
@@ -21,7 +21,27 @@ export interface CustomEdge {
   label: string;
   color?: string;
   dashed?: boolean;
-  source_origin: "manual" | "config-file" | "ai-suggested" | "docker-compose" | "auto-discovered";
+  source_origin: "manual" | "config-file" | "api-config" | "ai-suggested" | "docker-compose" | "auto-discovered";
+}
+
+// API registry types
+export type ApiCategory = "voice" | "communication" | "google" | "infrastructure" | "ai-llm" | "design" | "database";
+export type ApiAuthMethod = "api-key" | "oauth2" | "sdk" | "none" | "cdp" | "mcp";
+export type ApiStatus = "active" | "configured" | "inactive" | "via-proxy";
+
+export interface ApiDefinition {
+  id: string;
+  name: string;
+  description: string;
+  baseUrl?: string;
+  authMethod: ApiAuthMethod;
+  category: ApiCategory;
+  status: ApiStatus;
+  envKeys?: string[];
+  consumers: string[];
+  color?: string;
+  website?: string;
+  notes?: string;
 }
 
 export interface EntityOverride {

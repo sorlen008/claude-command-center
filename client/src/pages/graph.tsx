@@ -69,6 +69,7 @@ const EDGE_LEGEND: Record<string, { color: string; label: string }> = {
   depends_on:      { color: "#ef4444", label: "Depends On" },
   uses:            { color: "#f97316", label: "Uses" },
   shares_remote:   { color: "#34d399", label: "Shared Remote" },
+  uses_api:        { color: "#f59e0b", label: "Uses API" },
 };
 
 // ------ Node & Edge types ------

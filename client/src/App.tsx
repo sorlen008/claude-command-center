@@ -29,6 +29,7 @@ import Stats from "@/pages/stats";
 import Rules from "@/pages/rules";
 import CostDashboard from "@/pages/cost-dashboard";
 import MessageHistory from "@/pages/message-history";
+import APIs from "@/pages/apis";
 import NotFound from "@/pages/not-found";
 
 function DynamicTitle() {
@@ -67,6 +68,7 @@ function Router() {
         <Route path="/stats" component={Stats} />
         <Route path="/costs" component={CostDashboard} />
         <Route path="/messages" component={MessageHistory} />
+        <Route path="/apis" component={APIs} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

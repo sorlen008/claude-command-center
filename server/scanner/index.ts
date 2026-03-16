@@ -9,6 +9,7 @@ import { scanAllSessions } from "./session-scanner";
 import { scanAgentDefinitions, scanAgentExecutions } from "./agent-scanner";
 import { scanDockerCompose } from "./importers/docker-compose";
 import { scanGraphConfig } from "./graph-config-scanner";
+import { scanApiConfig } from "./api-config-scanner";
 import { entityId } from "./utils";
 import { buildRelationships } from "./relationships";
 import { getDB, save } from "../db";
@@ -148,20 +149,36 @@ export async function runFullScan(): Promise<void> {
       console.error("[scanner] Graph config scan error:", err);
     }
 
+    // API config file (apis-config.yaml)
+    try {
+      const apiConfig = scanApiConfig();
+      // Skip nodes that already exist from graph-config.yaml
+      const existingIds = new Set(allCustomNodes.map((n) => n.id));
+      const newApiNodes = apiConfig.nodes.filter((n) => !existingIds.has(n.id));
+      allCustomNodes.push(...newApiNodes);
+      allCustomEdges.push(...apiConfig.edges);
+    } catch (err) {
+      console.error("[scanner] API config scan error:", err);
+    }
+
     // Store auto-discovered + config custom nodes/edges (replace per source)
     const autoNodes = allCustomNodes.filter((n) => n.source === "auto-discovered");
     const dockerNodes = allCustomNodes.filter((n) => n.source === "docker-compose");
     const configNodes = allCustomNodes.filter((n) => n.source === "config-file");
+    const apiConfigNodes = allCustomNodes.filter((n) => n.source === "api-config");
     storage.replaceCustomNodes(autoNodes, "auto-discovered");
     storage.replaceCustomNodes(dockerNodes, "docker-compose");
     storage.replaceCustomNodes(configNodes, "config-file");
+    storage.replaceCustomNodes(apiConfigNodes, "api-config");
 
     const autoEdges = allCustomEdges.filter((e) => e.source_origin === "auto-discovered");
     const dockerEdges = allCustomEdges.filter((e) => e.source_origin === "docker-compose");
     const configEdges = allCustomEdges.filter((e) => e.source_origin === "config-file");
+    const apiConfigEdges = allCustomEdges.filter((e) => e.source_origin === "api-config");
     storage.replaceCustomEdges(autoEdges, "auto-discovered");
     storage.replaceCustomEdges(dockerEdges, "docker-compose");
     storage.replaceCustomEdges(configEdges, "config-file");
+    storage.replaceCustomEdges(apiConfigEdges, "api-config");
 
     lastScanDuration = Date.now() - start;
     scanVersion++;
