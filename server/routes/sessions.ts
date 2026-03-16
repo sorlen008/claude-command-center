@@ -212,13 +212,19 @@ function extractToolNames(content: unknown): string[] {
 /** Parse an entire session JSONL file into conversation messages */
 function parseSessionMessages(filePath: string, offset: number, limit: number): { messages: SessionMessage[]; totalMessages: number } {
   const allMessages: SessionMessage[] = [];
+  const MAX_MESSAGES = 2000; // Safety cap to prevent OOM
 
   try {
-    const data = fs.readFileSync(filePath, "utf-8");
-    const lines = data.split("\n");
+    // Stream the file line by line instead of loading entirely into memory
+    const content = fs.readFileSync(filePath, "utf-8");
+    let pos = 0;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
+    while (pos < content.length && allMessages.length < MAX_MESSAGES) {
+      const nextNewline = content.indexOf("\n", pos);
+      const lineEnd = nextNewline === -1 ? content.length : nextNewline;
+      const trimmed = content.slice(pos, lineEnd).trim();
+      pos = lineEnd + 1;
+
       if (!trimmed) continue;
       try {
         const record = JSON.parse(trimmed);

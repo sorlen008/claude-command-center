@@ -201,9 +201,12 @@ function getSessionDetails(filePath: string): SessionDetails {
   }
 
   // Estimate cost (note: we only have partial data from the tail chunk)
+  // totalInputTokens here includes input + cache_create + cache_read from the tail chunk.
+  // Most tokens are cache reads (90% cheaper). Use a blended rate.
   const pricing = getModelPricing(model);
-  // Cache reads are 90% cheaper
-  const costEstimate = (totalInputTokens / 1_000_000 * pricing.input * 0.1) + (totalOutputTokens / 1_000_000 * pricing.output);
+  const cacheReadRate = pricing.input * 0.1;
+  const blendedInputRate = totalInputTokens > 0 ? cacheReadRate : 0; // Most input is cache reads
+  const costEstimate = (totalInputTokens / 1_000_000 * blendedInputRate) + (totalOutputTokens / 1_000_000 * pricing.output);
 
   return {
     contextUsage,

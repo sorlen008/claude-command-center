@@ -110,7 +110,7 @@ const STATUS_CONFIG: Record<string, { dotClass: string; borderClass: string; car
 };
 
 function getStatusConfig(status?: string) {
-  return STATUS_CONFIG[status || ""] || STATUS_CONFIG.thinking;
+  return STATUS_CONFIG[status || ""] || STATUS_CONFIG.stale;
 }
 
 export default function Live() {
