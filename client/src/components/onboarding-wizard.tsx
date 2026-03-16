@@ -197,6 +197,7 @@ export function OnboardingWizard() {
   const [step, setStep] = useState(0);
   const [appName, setAppName] = useState("");
   const [initialized, setInitialized] = useState(false);
+  const [done, setDone] = useState(false);
 
   // Initialize appName from settings once loaded
   if (settings && !initialized) {
@@ -204,14 +205,17 @@ export function OnboardingWizard() {
     setInitialized(true);
   }
 
-  // Don't show while loading or if already onboarded
-  if (isLoading || !settings || settings.onboarded) {
+  // Don't show while loading, if already onboarded, or if just completed
+  if (isLoading || !settings || settings.onboarded || done) {
     return null;
   }
 
   const handleFinish = () => {
     const name = appName.trim() || "Command Center";
-    updateSettings.mutate({ appName: name, onboarded: true });
+    updateSettings.mutate(
+      { appName: name, onboarded: true },
+      { onSuccess: () => setDone(true) },
+    );
   };
 
   const canGoNext = step < TOTAL_STEPS - 1;
