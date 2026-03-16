@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { CLAUDE_DIR, dirExists, safeReadJson, readHead } from "./utils";
+import { CLAUDE_DIR, dirExists, safeReadJson, readHead, extractText } from "./utils";
 import { getCachedExecutions } from "./agent-scanner";
 import { getCachedSessions } from "./session-scanner";
 import type { LiveData, ActiveSession } from "@shared/types";
@@ -19,56 +19,78 @@ function getMaxTokens(model: string): number {
   return 200000; // default
 }
 
-/** Read context usage from the last assistant message in a session JSONL.
- *  Reads the tail of the file to avoid parsing the entire thing. */
-function getContextUsage(sessionId: string, projectsDir: string): ActiveSession["contextUsage"] {
-  if (!dirExists(projectsDir)) return undefined;
-
+/** Find the session JSONL file across all project dirs */
+function findSessionFile(sessionId: string, projectsDir: string): string | null {
+  if (!dirExists(projectsDir)) return null;
   try {
     const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
     for (const dir of dirs) {
       if (!dir.isDirectory()) continue;
       const jsonlPath = path.join(projectsDir, dir.name, `${sessionId}.jsonl`).replace(/\\/g, "/");
-      if (!fs.existsSync(jsonlPath)) continue;
-
-      // Read last ~64KB to find the most recent assistant message
-      const stat = fs.statSync(jsonlPath);
-      const chunkSize = Math.min(65536, stat.size);
-      const buf = Buffer.alloc(chunkSize);
-      let fd: number | null = null;
-      try {
-        fd = fs.openSync(jsonlPath, "r");
-        fs.readSync(fd, buf, 0, chunkSize, Math.max(0, stat.size - chunkSize));
-      } finally {
-        if (fd !== null) try { fs.closeSync(fd); } catch {}
-      }
-
-      const lines = buf.toString("utf-8").split("\n").reverse();
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const record = JSON.parse(trimmed);
-          if (record.type === "assistant" && record.message?.usage) {
-            const u = record.message.usage;
-            const model = record.message.model || "";
-            const tokensUsed = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-            const maxTokens = getMaxTokens(model);
-            return {
-              tokensUsed,
-              maxTokens,
-              percentage: Math.round((tokensUsed / maxTokens) * 100),
-              model,
-            };
-          }
-        } catch {
-          // Skip malformed lines
-        }
-      }
-      break; // Found the file, no usage data
+      if (fs.existsSync(jsonlPath)) return jsonlPath;
     }
   } catch {}
+  return null;
+}
 
+/** Read the tail of a JSONL file and return lines in reverse order */
+function readTailLines(filePath: string, chunkSize = 65536): string[] {
+  try {
+    const stat = fs.statSync(filePath);
+    const readSize = Math.min(chunkSize, stat.size);
+    const buf = Buffer.alloc(readSize);
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(filePath, "r");
+      fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
+    } finally {
+      if (fd !== null) try { fs.closeSync(fd); } catch {}
+    }
+    return buf.toString("utf-8").split("\n").reverse();
+  } catch {
+    return [];
+  }
+}
+
+/** Read context usage from the last assistant message in a session JSONL */
+function getContextUsageFromFile(filePath: string): ActiveSession["contextUsage"] {
+  const lines = readTailLines(filePath);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const record = JSON.parse(trimmed);
+      if (record.type === "assistant" && record.message?.usage) {
+        const u = record.message.usage;
+        const model = record.message.model || "";
+        const tokensUsed = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+        const maxTokens = getMaxTokens(model);
+        return {
+          tokensUsed,
+          maxTokens,
+          percentage: Math.round((tokensUsed / maxTokens) * 100),
+          model,
+        };
+      }
+    } catch {}
+  }
+  return undefined;
+}
+
+/** Read the last user message from a session JSONL */
+function getLastUserMessage(filePath: string): string | undefined {
+  const lines = readTailLines(filePath);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const record = JSON.parse(trimmed);
+      if (record.type === "user" && record.message) {
+        const text = extractText(record.message.content || "");
+        if (text) return text.replace(/\n/g, " ").trim().slice(0, 200);
+      }
+    } catch {}
+  }
   return undefined;
 }
 
@@ -133,8 +155,12 @@ export function getLiveData(): LiveData {
       active.projectKey = cached.projectKey;
     }
 
-    // 2c. Extract context usage from session JSONL (read last assistant usage)
-    active.contextUsage = getContextUsage(active.sessionId, projectsDir);
+    // 2c. Extract context usage + last user message from session JSONL
+    const sessionFile = findSessionFile(active.sessionId, projectsDir);
+    if (sessionFile) {
+      active.contextUsage = getContextUsageFromFile(sessionFile);
+      active.lastMessage = getLastUserMessage(sessionFile);
+    }
   }
 
   // 3. Get recent activity from cached executions

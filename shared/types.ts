@@ -253,6 +253,7 @@ export interface ActiveSession {
   startedAt: number;
   activeAgents: ActiveAgent[];
   firstMessage?: string;
+  lastMessage?: string;
   slug?: string;
   projectKey?: string;
   contextUsage?: {

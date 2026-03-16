@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 import { getCachedDefinitions, getCachedExecutions, getCachedAgentStats } from "../scanner/agent-scanner";
-import { CLAUDE_DIR, entityId, dirExists, fileExists } from "../scanner/utils";
+import { CLAUDE_DIR, entityId, dirExists, fileExists, readMessageTimeline } from "../scanner/utils";
 import { qstr, validate, AgentExecListSchema, validateMarkdownPath } from "./validation";
 
 const router = Router();
@@ -167,50 +167,7 @@ router.get("/api/agents/executions/:agentId", (req: Request, res: Response) => {
   const exec = getCachedExecutions().find(e => e.agentId === req.params.agentId);
   if (!exec) return res.status(404).json({ message: "Execution not found" });
 
-  const records: { type: string; role?: string; timestamp: string; contentPreview: string; model?: string }[] = [];
-  try {
-    const stat = fs.statSync(exec.filePath);
-    const chunkSize = Math.min(131072, stat.size);
-    const buf = Buffer.alloc(chunkSize);
-    const fd = fs.openSync(exec.filePath, "r");
-    try {
-      fs.readSync(fd, buf, 0, chunkSize, 0);
-    } finally {
-      fs.closeSync(fd);
-    }
-    const lines = buf.toString("utf-8").split("\n");
-    let count = 0;
-    for (let i = 0; i < Math.min(lines.length, 150) && count < 50; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      try {
-        const r = JSON.parse(line);
-        if (r.type === "user" || r.type === "assistant") {
-          const msg = r.message;
-          let preview = "";
-          if (msg && typeof msg === "object") {
-            const c = msg.content;
-            if (typeof c === "string") preview = c;
-            else if (Array.isArray(c)) {
-              preview = c.filter((x: any) => x?.type === "text").map((x: any) => x.text || "").join(" ");
-            }
-          }
-          records.push({
-            type: r.type,
-            role: msg?.role,
-            timestamp: r.timestamp || "",
-            contentPreview: preview.replace(/\n/g, " ").slice(0, 300),
-            model: r.type === "assistant" ? msg?.model : undefined,
-          });
-          count++;
-        }
-      } catch {
-        // Truncated JSON line — skip
-      }
-    }
-  } catch (err) {
-    console.warn("[agents] Failed to read execution file:", (err as Error).message);
-  }
+  const records = readMessageTimeline(exec.filePath, { includeModel: true });
 
   res.json({ ...exec, records });
 });

@@ -79,7 +79,7 @@ export function extractDbNodesFromMcps(mcpEntities: Entity[]): { nodes: CustomNo
 }
 
 /** Type guard: check if a value looks like an MCP server config */
-function isMCPServerConfig(v: unknown): v is MCPServerConfig {
+export function isMCPServerConfig(v: unknown): v is MCPServerConfig {
   return typeof v === "object" && v !== null && !Array.isArray(v) &&
     (typeof (v as MCPServerConfig).command === "string" || typeof (v as MCPServerConfig).url === "string");
 }

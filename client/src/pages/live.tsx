@@ -297,11 +297,8 @@ function ActiveSessionCard({
   onCopyResume: (id: string) => void;
 }) {
   const title = session.slug || shortSummary(session.firstMessage, 5) || session.sessionId.slice(0, 12) + "...";
-  const subtitle = session.slug
-    ? shortSummary(session.firstMessage, 8)
-    : session.firstMessage
-      ? shortSummary(session.firstMessage, 8)
-      : null;
+  const lastMsg = session.lastMessage ? shortSummary(session.lastMessage, 12) : null;
+  const firstMsg = session.firstMessage ? shortSummary(session.firstMessage, 8) : null;
   const isCopied = copiedId === session.sessionId;
 
   return (
@@ -334,9 +331,19 @@ function ActiveSessionCard({
               </div>
             </div>
 
-            {/* Subtitle */}
-            {subtitle && session.slug && (
-              <p className="text-xs text-muted-foreground truncate mt-0.5">{subtitle}</p>
+            {/* Latest message */}
+            {lastMsg && (
+              <p className="text-xs text-foreground/80 mt-1 line-clamp-2">
+                <span className="text-[10px] text-muted-foreground/50 mr-1">Latest:</span>
+                {lastMsg}
+              </p>
+            )}
+            {/* First message (if different from last) */}
+            {firstMsg && firstMsg !== lastMsg && (
+              <p className="text-[11px] text-muted-foreground/60 truncate mt-0.5">
+                <span className="text-[10px] mr-1">Started:</span>
+                {firstMsg}
+              </p>
             )}
 
             {/* Meta row */}

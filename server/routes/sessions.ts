@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { getCachedSessions, getCachedStats, removeCachedSession, restoreCachedSession } from "../scanner/session-scanner";
-import { decodeProjectKey } from "../scanner/utils";
+import { decodeProjectKey, readMessageTimeline } from "../scanner/utils";
 import { SessionIdSchema, SessionListSchema, IdsArraySchema, validate, qstr } from "./validation";
 import { TRASH_DIR, MAX_SESSIONS_RESPONSE } from "../config";
 
@@ -150,49 +150,7 @@ router.get("/api/sessions/:id", (req: Request, res: Response) => {
   const session = getCachedSessions().find(s => s.id === idResult.data);
   if (!session) return res.status(404).json({ message: "Session not found" });
 
-  const records: { type: string; role?: string; timestamp: string; contentPreview: string }[] = [];
-  try {
-    const stat = fs.statSync(session.filePath);
-    const chunkSize = Math.min(131072, stat.size);
-    const buf = Buffer.alloc(chunkSize);
-    const fd = fs.openSync(session.filePath, "r");
-    try {
-      fs.readSync(fd, buf, 0, chunkSize, 0);
-    } finally {
-      fs.closeSync(fd);
-    }
-    const lines = buf.toString("utf-8").split("\n");
-    let count = 0;
-    for (let i = 0; i < Math.min(lines.length, 150) && count < 50; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      try {
-        const r = JSON.parse(line);
-        if (r.type === "user" || r.type === "assistant") {
-          const msg = r.message;
-          let preview = "";
-          if (msg && typeof msg === "object") {
-            const c = msg.content;
-            if (typeof c === "string") preview = c;
-            else if (Array.isArray(c)) {
-              preview = c.filter((x: any) => x?.type === "text").map((x: any) => x.text || "").join(" ");
-            }
-          }
-          records.push({
-            type: r.type,
-            role: msg?.role,
-            timestamp: r.timestamp || "",
-            contentPreview: preview.replace(/\n/g, " ").slice(0, 300),
-          });
-          count++;
-        }
-      } catch {
-        // Truncated or malformed JSON line — skip
-      }
-    }
-  } catch (err) {
-    console.warn("[sessions] Failed to read session file:", (err as Error).message);
-  }
+  const records = readMessageTimeline(session.filePath);
 
   res.json({ ...session, records });
 });

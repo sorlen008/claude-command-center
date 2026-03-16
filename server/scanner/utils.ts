@@ -176,6 +176,63 @@ export function readTailTs(filePath: string): string | null {
   return null;
 }
 
+/** Read the first chunk of a JSONL file and extract user/assistant message records.
+ *  Returns up to 50 records from the first 128KB / 150 lines. */
+export function readMessageTimeline(
+  filePath: string,
+  opts?: { includeModel?: boolean },
+): { type: string; role?: string; timestamp: string; contentPreview: string; model?: string }[] {
+  const records: { type: string; role?: string; timestamp: string; contentPreview: string; model?: string }[] = [];
+  let fd: number | null = null;
+  try {
+    const stat = fs.statSync(filePath);
+    const chunkSize = Math.min(131072, stat.size);
+    const buf = Buffer.alloc(chunkSize);
+    fd = fs.openSync(filePath, "r");
+    fs.readSync(fd, buf, 0, chunkSize, 0);
+    const lines = buf.toString("utf-8").split("\n");
+    let count = 0;
+    for (let i = 0; i < Math.min(lines.length, 150) && count < 50; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        const r = JSON.parse(line);
+        if (r.type === "user" || r.type === "assistant") {
+          const msg = r.message;
+          let preview = "";
+          if (msg && typeof msg === "object") {
+            const c = msg.content;
+            if (typeof c === "string") preview = c;
+            else if (Array.isArray(c)) {
+              preview = c.filter((x: any) => x?.type === "text").map((x: any) => x.text || "").join(" ");
+            }
+          }
+          const record: { type: string; role?: string; timestamp: string; contentPreview: string; model?: string } = {
+            type: r.type,
+            role: msg?.role,
+            timestamp: r.timestamp || "",
+            contentPreview: preview.replace(/\n/g, " ").slice(0, 300),
+          };
+          if (opts?.includeModel && r.type === "assistant") {
+            record.model = msg?.model;
+          }
+          records.push(record);
+          count++;
+        }
+      } catch {
+        // Truncated or malformed JSON line — skip
+      }
+    }
+  } catch (err) {
+    console.warn("[utils] Failed to read message timeline:", (err as Error).message);
+  } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch {}
+    }
+  }
+  return records;
+}
+
 /** Handle string and [{type:"text", text:"..."}] content shapes */
 export function extractText(content: unknown): string {
   if (typeof content === "string") return content;

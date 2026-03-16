@@ -87,29 +87,72 @@ function extractTags(records: any[]): string[] {
     .map(([w]) => w);
 }
 
-/** Parse history.jsonl -> Map<sessionId, entries[]> */
+// History index cache — avoids re-reading the entire append-only file
+let lastHistorySize = 0;
+let cachedHistoryIndex = new Map<string, any[]>();
+
+/** Parse history.jsonl -> Map<sessionId, entries[]> (cached, incremental) */
 function buildHistoryIndex(): Map<string, any[]> {
-  const index = new Map<string, any[]>();
   const historyPath = path.join(CLAUDE_DIR, "history.jsonl").replace(/\\/g, "/");
-  if (!fileExists(historyPath)) return index;
+  if (!fileExists(historyPath)) {
+    // File gone — reset cache
+    lastHistorySize = 0;
+    cachedHistoryIndex = new Map();
+    return cachedHistoryIndex;
+  }
+
+  let currentSize: number;
   try {
-    const content = fs.readFileSync(historyPath, "utf-8");
-    for (const line of content.split("\n")) {
+    const stat = fs.statSync(historyPath);
+    currentSize = stat.size;
+  } catch {
+    return cachedHistoryIndex;
+  }
+
+  // No change — return cached
+  if (currentSize === lastHistorySize) {
+    return cachedHistoryIndex;
+  }
+
+  // File truncated or replaced — reset and read from scratch
+  if (currentSize < lastHistorySize) {
+    lastHistorySize = 0;
+    cachedHistoryIndex = new Map();
+  }
+
+  // Read only new bytes appended since last read
+  const readOffset = lastHistorySize;
+  const bytesToRead = currentSize - readOffset;
+  if (bytesToRead <= 0) return cachedHistoryIndex;
+
+  let fd: number | null = null;
+  try {
+    const buf = Buffer.alloc(bytesToRead);
+    fd = fs.openSync(historyPath, "r");
+    fs.readSync(fd, buf, 0, bytesToRead, readOffset);
+    const chunk = buf.toString("utf-8");
+    for (const line of chunk.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
         const entry = JSON.parse(trimmed);
         const sid = entry.sessionId;
         if (sid) {
-          if (!index.has(sid)) index.set(sid, []);
-          index.get(sid)!.push(entry);
+          if (!cachedHistoryIndex.has(sid)) cachedHistoryIndex.set(sid, []);
+          cachedHistoryIndex.get(sid)!.push(entry);
         }
       } catch {}
     }
+    lastHistorySize = currentSize;
   } catch (err) {
     console.warn("[session-scanner] Failed to read history.jsonl:", (err as Error).message);
+  } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch {}
+    }
   }
-  return index;
+
+  return cachedHistoryIndex;
 }
 
 /** Read ~/.claude/sessions/*.json -> Set of active session IDs */
