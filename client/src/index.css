@@ -224,23 +224,21 @@ pre code {
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   cursor: pointer;
-  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+  will-change: opacity;
 }
 .graph-node:hover {
   box-shadow: 0 4px 12px rgba(59,130,246,0.15);
 }
 
-/* Graph hover dimming */
+/* Graph hover dimming — no transitions for perf, instant swap */
 .react-flow__node.dimmed .graph-node {
   opacity: 0.25;
-  transition: opacity 0.2s ease;
 }
 .react-flow__edge.dimmed path {
-  transition: opacity 0.2s ease;
+  opacity: 0.08;
 }
 .react-flow__edge.highlighted path {
   filter: drop-shadow(0 0 3px currentColor);
-  transition: filter 0.2s ease;
 }
 
 /* ---- Design System Utilities ---- */
@@ -275,12 +273,15 @@ pre code {
   animation: pulse-ring 2s ease-out infinite;
 }
 
-/* Edge flow animation for graph */
+/* Edge flow animation for graph — only on hover to reduce GPU load */
 @keyframes edge-flow {
   to { stroke-dashoffset: -24; }
 }
-.edge-animated path {
+.edge-animated.highlighted path {
   animation: edge-flow 1s linear infinite;
+}
+.edge-animated path {
+  animation: none;
 }
 
 /* Glass effect */

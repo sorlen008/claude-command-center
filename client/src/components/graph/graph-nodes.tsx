@@ -41,8 +41,7 @@ function ProjectNodeComponent({ data }: { data: Record<string, unknown> }) {
       className="graph-node"
       style={{
         borderTop: `3px solid ${color}`,
-        background: `linear-gradient(to bottom, ${color}08, hsl(var(--card)))`,
-        boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : `0 -4px 12px ${color}15`,
+        boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
       }}
     >
       <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-3 !h-3" />
@@ -58,8 +57,8 @@ function ProjectNodeComponent({ data }: { data: Record<string, unknown> }) {
             <span className="font-semibold text-sm text-foreground truncate">{data.label as string}</span>
             {health === "ok" && (
               <span
-                className="w-2 h-2 rounded-full shrink-0 pulse-ring"
-                style={{ backgroundColor: "#22c55e", color: "#22c55e40" }}
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: "#22c55e" }}
               />
             )}
           </div>
@@ -142,8 +141,6 @@ function CustomNodeComponent({ data }: { data: Record<string, unknown> }) {
       className="graph-node"
       style={{
         borderLeft: `3px solid ${color}`,
-        borderTop: `1px solid ${color}30`,
-        background: `linear-gradient(135deg, ${color}08, hsl(var(--card)))`,
         boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
       }}
     >

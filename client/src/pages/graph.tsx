@@ -324,20 +324,12 @@ export default function GraphPage() {
       return rawEdges.map((e) => ({
         ...e,
         className: connectedEdgeIds.has(e.id) ? "highlighted" : "dimmed",
-        style: {
-          ...e.style,
-          opacity: connectedEdgeIds.has(e.id) ? 1 : 0.08,
-        },
       }));
     }
     if (selectedNode && pathEdgeIds.size > 0) {
       return rawEdges.map((e) => ({
         ...e,
         className: pathEdgeIds.has(e.id) ? "highlighted" : "dimmed",
-        style: {
-          ...e.style,
-          opacity: pathEdgeIds.has(e.id) ? 1 : 0.12,
-        },
       }));
     }
     return rawEdges;
@@ -577,12 +569,11 @@ export default function GraphPage() {
                 className="!bg-card !border-border !shadow-lg"
               />
               <MiniMap
-                nodeColor={(node) => {
-                  const gNode = node.data as unknown as GraphNode;
-                  return gNode?.color || entityColors[gNode?.type] || "#64748b";
-                }}
+                nodeColor="#64748b"
                 maskColor="hsl(224 71% 4% / 0.8)"
                 style={{ backgroundColor: "hsl(224 71% 6%)", border: "1px solid hsl(216 34% 17%)" }}
+                zoomable={false}
+                pannable={false}
               />
             </ReactFlow>
 
