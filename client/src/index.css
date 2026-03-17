@@ -499,10 +499,99 @@ pre code {
   background-clip: text;
 }
 
-/* Mood player equalizer bars */
-@keyframes equalizer {
-  0%, 100% { transform: scaleY(0.3); }
-  50% { transform: scaleY(1); }
+/* Mood player animations */
+@keyframes eq1 {
+  0% { height: 3px; }
+  12% { height: 14px; }
+  28% { height: 6px; }
+  44% { height: 11px; }
+  56% { height: 4px; }
+  72% { height: 16px; }
+  84% { height: 7px; }
+  100% { height: 3px; }
+}
+@keyframes eq2 {
+  0% { height: 8px; }
+  16% { height: 4px; }
+  32% { height: 16px; }
+  48% { height: 6px; }
+  64% { height: 12px; }
+  80% { height: 3px; }
+  100% { height: 8px; }
+}
+@keyframes eq3 {
+  0% { height: 5px; }
+  20% { height: 16px; }
+  40% { height: 3px; }
+  55% { height: 10px; }
+  70% { height: 14px; }
+  85% { height: 5px; }
+  100% { height: 5px; }
+}
+@keyframes eq4 {
+  0% { height: 10px; }
+  15% { height: 3px; }
+  35% { height: 12px; }
+  50% { height: 6px; }
+  65% { height: 16px; }
+  82% { height: 4px; }
+  100% { height: 10px; }
+}
+@keyframes eq5 {
+  0% { height: 6px; }
+  18% { height: 12px; }
+  36% { height: 4px; }
+  52% { height: 14px; }
+  68% { height: 8px; }
+  86% { height: 16px; }
+  100% { height: 6px; }
+}
+@keyframes mood-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(168,85,247,0.2), 0 0 4px rgba(168,85,247,0.1); }
+  50% { box-shadow: 0 0 20px rgba(168,85,247,0.35), 0 0 8px rgba(219,39,119,0.2); }
+}
+@keyframes mood-border {
+  0%, 100% { border-color: rgba(168,85,247,0.35); }
+  50% { border-color: rgba(219,39,119,0.45); }
+}
+/* Light Cycle race — blue (sweep then wait offscreen) */
+@keyframes lc-race-blue {
+  0%        { transform: translateX(100%); visibility: visible; }
+  50%       { transform: translateX(-100%); visibility: visible; }
+  50.01%    { visibility: hidden; }
+  99.99%    { transform: translateX(100%); visibility: hidden; }
+  100%      { transform: translateX(100%); visibility: visible; }
+}
+/* Light Cycle race — orange (5% slower sweep, same total cycle) */
+@keyframes lc-race-orange {
+  0%        { transform: translateX(100%); visibility: visible; }
+  52.5%     { transform: translateX(-100%); visibility: visible; }
+  52.51%    { visibility: hidden; }
+  99.99%    { transform: translateX(100%); visibility: hidden; }
+  100%      { transform: translateX(100%); visibility: visible; }
+}
+/* Intermittent on/off — lines appear and disappear sharply */
+@keyframes lc-flash-blue {
+  0%, 100% { opacity: 0; }
+  5%       { opacity: 0; }
+  5.1%     { opacity: 1; }
+  22%      { opacity: 1; }
+  22.1%    { opacity: 0; }
+  52%      { opacity: 0; }
+  52.1%    { opacity: 1; }
+  68%      { opacity: 1; }
+  68.1%    { opacity: 0; }
+}
+@keyframes lc-flash-orange {
+  0%, 100% { opacity: 0; }
+  30%      { opacity: 0; }
+  30.1%    { opacity: 1; }
+  48%      { opacity: 1; }
+  48.1%    { opacity: 0; }
+  78%      { opacity: 0; }
+  78.1%    { opacity: 1; }
+  92%      { opacity: 1; }
+  92.1%    { opacity: 0; }
 }
 
 /* Enhanced live pulse via pseudo-element */

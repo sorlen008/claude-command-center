@@ -29,7 +29,6 @@ import {
   Bot,
   Radio,
   BarChart3,
-  DollarSign,
   BookOpen,
   Globe,
 } from "lucide-react";
@@ -63,11 +62,9 @@ const navSections = [
       { path: "/graph", label: "Graph", icon: GitBranch, countKey: null },
       { path: "/discovery", label: "Discovery", icon: Search, countKey: null },
       { path: "/rules", label: "Rules", icon: BookOpen, countKey: null },
-      { path: "/config", label: "Config", icon: Settings, countKey: "config" as const },
       { path: "/activity", label: "Activity", icon: Activity, countKey: null },
-      { path: "/stats", label: "Stats", icon: BarChart3, countKey: null },
-      { path: "/costs", label: "Costs", icon: DollarSign, countKey: null },
-      { path: "/settings", label: "Settings", icon: SlidersHorizontal, countKey: null },
+      { path: "/stats", label: "Analytics & Cost", icon: BarChart3, countKey: null },
+      { path: "/settings", label: "Settings", icon: SlidersHorizontal, countKey: "config" as const },
     ],
   },
 ];

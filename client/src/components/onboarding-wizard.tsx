@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppSettings, useUpdateSettings } from "@/hooks/use-settings";
-import { useScanStatus } from "@/hooks/use-entities";
+import { useScanStatus, useRescan } from "@/hooks/use-entities";
 import {
   Terminal,
   FolderOpen,
@@ -26,17 +26,20 @@ import {
   Keyboard,
   Search,
   Rocket,
+  RefreshCw,
+  AlertCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 
 const TOTAL_STEPS = 3;
 
-const entityConfig: { key: string; label: string; icon: typeof Terminal; countKey: string }[] = [
-  { key: "project", label: "Projects", icon: FolderOpen, countKey: "project" },
-  { key: "mcp", label: "MCP Servers", icon: Server, countKey: "mcp" },
-  { key: "skill", label: "Skills", icon: Wand2, countKey: "skill" },
-  { key: "plugin", label: "Plugins", icon: Puzzle, countKey: "plugin" },
-  { key: "markdown", label: "Markdown Files", icon: FileText, countKey: "markdown" },
-  { key: "config", label: "Config Files", icon: Settings, countKey: "config" },
+const entityConfig: { key: string; label: string; icon: typeof Terminal; countKey: string; hint: string }[] = [
+  { key: "project", label: "Projects", icon: FolderOpen, countKey: "project", hint: "Directories with CLAUDE.md or .mcp.json" },
+  { key: "mcp", label: "MCP Servers", icon: Server, countKey: "mcp", hint: "Defined in ~/.claude/.mcp.json" },
+  { key: "skill", label: "Skills", icon: Wand2, countKey: "skill", hint: "Markdown files in ~/.claude/skills/" },
+  { key: "plugin", label: "Plugins", icon: Puzzle, countKey: "plugin", hint: "Installed in ~/.claude/plugins/" },
+  { key: "markdown", label: "Markdown", icon: FileText, countKey: "markdown", hint: "CLAUDE.md and docs files" },
+  { key: "config", label: "Config", icon: Settings, countKey: "config", hint: "settings.json files" },
 ];
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
@@ -87,7 +90,7 @@ function StepWelcome({
           onChange={(e) => onAppNameChange(e.target.value)}
           placeholder="Command Center"
           maxLength={50}
-          className="text-center bg-muted/30 border-muted-foreground/20 focus:border-blue-500/50"
+          className="text-center"
         />
         <p className="text-[11px] text-muted-foreground/60 text-center">
           Shown in the sidebar and browser tab
@@ -99,19 +102,24 @@ function StepWelcome({
 
 function StepDiscovered() {
   const { data: status, isLoading } = useScanStatus();
+  const rescan = useRescan();
   const counts = (status?.entityCounts || {}) as Record<string, number>;
   const totalEntities = status?.totalEntities || 0;
-  const sessionCount = status?.sessionCount || 0;
+  const sessionCount = (status as any)?.sessionCount || 0;
+  const hasEntities = totalEntities > 0;
 
   return (
-    <div className="flex flex-col items-center gap-6 py-2">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.2)] ring-1 ring-emerald-400/20">
+    <div className="flex flex-col items-center gap-5 py-2">
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.15)] ring-1 ring-emerald-400/20">
         <Search className="h-8 w-8 text-white" />
       </div>
       <div className="text-center space-y-2">
-        <h2 className="text-xl font-bold">Here's What We Found</h2>
+        <h2 className="text-xl font-bold">{hasEntities ? "Here's What We Found" : "No Entities Found Yet"}</h2>
         <p className="text-sm text-muted-foreground max-w-sm">
-          These were auto-discovered from your <code className="text-xs bg-muted px-1.5 py-0.5 rounded">~/.claude/</code> directory
+          {hasEntities
+            ? <>Auto-discovered from your <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">~/.claude/</code> directory</>
+            : "That's okay! Here's how to get started with Claude Code."
+          }
         </p>
       </div>
 
@@ -120,39 +128,81 @@ function StepDiscovered() {
           <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           Scanning...
         </div>
-      ) : (
-        <div className="w-full grid grid-cols-2 gap-3">
-          {entityConfig.map(({ key, label, icon: Icon, countKey }) => {
-            const count = counts[countKey] || 0;
-            return (
-              <div
-                key={key}
-                className="flex items-center gap-3 rounded-lg border border-muted-foreground/10 bg-muted/20 px-4 py-3 transition-colors"
-              >
-                <Icon className="h-4 w-4 text-blue-400 shrink-0" />
+      ) : hasEntities ? (
+        <>
+          <div className="w-full grid grid-cols-2 gap-2">
+            {entityConfig.map(({ key, label, icon: Icon, countKey }) => {
+              const count = counts[countKey] || 0;
+              return (
+                <div
+                  key={key}
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                    count > 0
+                      ? "border-border/50 bg-card"
+                      : "border-border/20 bg-muted/10 opacity-50"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 text-blue-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-muted-foreground">{label}</div>
+                    <div className="text-lg font-semibold tabular-nums font-mono">{count}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {sessionCount > 0 && (
+              <div className="col-span-2 flex items-center gap-3 rounded-lg border border-border/50 bg-card px-3 py-2.5">
+                <GitBranch className="h-4 w-4 text-purple-400 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-muted-foreground">{label}</div>
-                  <div className="text-lg font-semibold tabular-nums">{count}</div>
+                  <div className="text-[11px] text-muted-foreground">Sessions</div>
+                  <div className="text-lg font-semibold tabular-nums font-mono">{sessionCount}</div>
                 </div>
               </div>
-            );
-          })}
-          {sessionCount > 0 && (
-            <div className="col-span-2 flex items-center gap-3 rounded-lg border border-muted-foreground/10 bg-muted/20 px-4 py-3">
-              <GitBranch className="h-4 w-4 text-purple-400 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-muted-foreground">Sessions</div>
-                <div className="text-lg font-semibold tabular-nums">{sessionCount}</div>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground/60">
+            {totalEntities} entities total
+          </p>
+        </>
+      ) : (
+        /* Empty state — guide the user */
+        <div className="w-full space-y-3">
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <p>The scanner looks for Claude Code files in <code className="bg-muted px-1 py-0.5 rounded font-mono">~/.claude/</code>. To populate your dashboard:</p>
+                <ul className="space-y-1.5 ml-1">
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-400 font-bold mt-0.5">1.</span>
+                    <span>Run <code className="bg-muted px-1 py-0.5 rounded font-mono">claude</code> in any project to create a session</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-400 font-bold mt-0.5">2.</span>
+                    <span>Add a <code className="bg-muted px-1 py-0.5 rounded font-mono">CLAUDE.md</code> file to your project root</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-400 font-bold mt-0.5">3.</span>
+                    <span>Configure MCP servers in <code className="bg-muted px-1 py-0.5 rounded font-mono">~/.claude/.mcp.json</code></span>
+                  </li>
+                </ul>
               </div>
             </div>
-          )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2"
+            onClick={() => rescan.mutate()}
+            disabled={rescan.isPending}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${rescan.isPending ? "animate-spin" : ""}`} />
+            {rescan.isPending ? "Scanning..." : "Rescan Now"}
+          </Button>
+          <p className="text-[11px] text-muted-foreground/50 text-center">
+            You can also add extra scan paths later in Settings
+          </p>
         </div>
-      )}
-
-      {!isLoading && totalEntities > 0 && (
-        <p className="text-xs text-muted-foreground/60">
-          {totalEntities} entities total
-        </p>
       )}
     </div>
   );
@@ -162,30 +212,36 @@ function StepReady() {
   const tips = [
     { icon: Keyboard, label: "Press Ctrl+K to search across everything" },
     { icon: GitBranch, label: "Check the Graph page for an ecosystem overview" },
-    { icon: Sparkles, label: "Use AI Suggest on the Discovery page to discover infrastructure" },
+    { icon: Sparkles, label: "Use AI Suggest on Discovery to find infrastructure" },
   ];
 
   return (
-    <div className="flex flex-col items-center gap-6 py-2">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.2)] ring-1 ring-amber-400/20">
+    <div className="flex flex-col items-center gap-5 py-2">
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/20">
         <Rocket className="h-8 w-8 text-white" />
       </div>
       <div className="text-center space-y-2">
         <h2 className="text-xl font-bold">You're All Set!</h2>
         <p className="text-sm text-muted-foreground max-w-sm">
-          Your command center is ready. Here are some quick tips to get started.
+          Your command center is ready. Here are some quick tips.
         </p>
       </div>
       <div className="w-full space-y-2">
         {tips.map((tip, i) => (
           <div
             key={i}
-            className="flex items-center gap-3 rounded-lg border border-muted-foreground/10 bg-muted/20 px-4 py-3"
+            className="flex items-center gap-3 rounded-lg border border-border/50 bg-card px-4 py-3"
           >
             <tip.icon className="h-4 w-4 text-amber-400 shrink-0" />
             <span className="text-sm">{tip.label}</span>
           </div>
         ))}
+      </div>
+      <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 w-full">
+        <SlidersHorizontal className="h-4 w-4 text-blue-400 shrink-0" />
+        <p className="text-xs text-muted-foreground">
+          Want to re-run this later? Go to <span className="font-semibold text-blue-400">Settings</span> and click <span className="font-semibold text-blue-400">Run Onboarding</span>
+        </p>
       </div>
     </div>
   );
@@ -225,7 +281,7 @@ export function OnboardingWizard() {
   return (
     <Dialog open={true}>
       <DialogContent
-        className="sm:max-w-[480px] bg-gradient-to-b from-[hsl(222_47%_8%)] to-[hsl(222_47%_6%)] border-muted-foreground/10 shadow-2xl"
+        className="sm:max-w-[480px]"
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >

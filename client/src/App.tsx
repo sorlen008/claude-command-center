@@ -21,7 +21,7 @@ const MarkdownFiles = lazy(() => import("@/pages/markdown-files"));
 const MarkdownEdit = lazy(() => import("@/pages/markdown-edit"));
 const GraphPage = lazy(() => import("@/pages/graph"));
 const Discovery = lazy(() => import("@/pages/discovery"));
-const Config = lazy(() => import("@/pages/config"));
+// Config merged into Settings page
 const ActivityPage = lazy(() => import("@/pages/activity"));
 const Sessions = lazy(() => import("@/pages/sessions"));
 const Agents = lazy(() => import("@/pages/agents"));
@@ -29,7 +29,7 @@ const Live = lazy(() => import("@/pages/live"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const Stats = lazy(() => import("@/pages/stats"));
 const Rules = lazy(() => import("@/pages/rules"));
-const CostDashboard = lazy(() => import("@/pages/cost-dashboard"));
+// Costs merged into Stats (Analytics) page
 const MessageHistory = lazy(() => import("@/pages/message-history"));
 const APIs = lazy(() => import("@/pages/apis"));
 import NotFound from "@/pages/not-found";
@@ -70,7 +70,7 @@ function Router() {
             <Route path="/markdown/:id" component={MarkdownEdit} />
             <Route path="/graph" component={GraphPage} />
             <Route path="/discovery" component={Discovery} />
-            <Route path="/config" component={Config} />
+            <Route path="/config" component={SettingsPage} />
             <Route path="/activity" component={ActivityPage} />
             <Route path="/sessions" component={Sessions} />
             <Route path="/agents" component={Agents} />
@@ -78,7 +78,7 @@ function Router() {
             <Route path="/settings" component={SettingsPage} />
             <Route path="/rules" component={Rules} />
             <Route path="/stats" component={Stats} />
-            <Route path="/costs" component={CostDashboard} />
+            <Route path="/costs" component={Stats} />
             <Route path="/messages" component={MessageHistory} />
             <Route path="/apis" component={APIs} />
             <Route component={NotFound} />

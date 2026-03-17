@@ -16,7 +16,7 @@ const ScanPathsSchema = z.object({
 const SettingsPatchSchema = z.object({
   appName: z.string().trim().min(1, "appName must be a non-empty string").max(50, "appName must be 50 characters or fewer").optional(),
   scanPaths: ScanPathsSchema,
-  onboarded: z.literal(true).optional(),
+  onboarded: z.boolean().optional(),
 });
 
 const router = Router();
