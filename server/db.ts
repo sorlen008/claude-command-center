@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import type { Entity, Relationship, MarkdownBackup, AppSettings, CustomNode, CustomEdge, EntityOverride } from "@shared/types";
+import type { Entity, Relationship, MarkdownBackup, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary } from "@shared/types";
 
 const dataDir = process.env.COMMAND_CENTER_DATA
   ? path.resolve(process.env.COMMAND_CENTER_DATA)
@@ -24,6 +24,7 @@ export interface DBData {
   customNodes: CustomNode[];
   customEdges: CustomEdge[];
   entityOverrides: Record<string, EntityOverride>;
+  sessionSummaries: Record<string, SessionSummary>;
 }
 
 export const defaultAppSettings: AppSettings = {
@@ -51,6 +52,7 @@ function defaultData(): DBData {
     customNodes: [],
     customEdges: [],
     entityOverrides: {},
+    sessionSummaries: {},
   };
 }
 
@@ -70,6 +72,7 @@ try {
     if (!data.customNodes) data.customNodes = [];
     if (!data.customEdges) data.customEdges = [];
     if (!data.entityOverrides) data.entityOverrides = {};
+    if (!data.sessionSummaries) data.sessionSummaries = {};
     if (data.appSettings.onboarded === undefined) data.appSettings.onboarded = false;
   } else {
     data = defaultData();

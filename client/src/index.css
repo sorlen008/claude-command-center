@@ -554,21 +554,22 @@ pre code {
   0%, 100% { border-color: rgba(168,85,247,0.35); }
   50% { border-color: rgba(219,39,119,0.45); }
 }
-/* Light Cycle race — blue (sweep then wait offscreen) */
+/* Light Cycle race — blue (sweep right-to-left, then pause offscreen) */
+/* width=30%, so translateX(333%) = 100% of parent, translateX(-133%) = -40% of parent */
 @keyframes lc-race-blue {
-  0%        { transform: translateX(100%); visibility: visible; }
-  50%       { transform: translateX(-100%); visibility: visible; }
-  50.01%    { visibility: hidden; }
-  99.99%    { transform: translateX(100%); visibility: hidden; }
-  100%      { transform: translateX(100%); visibility: visible; }
+  0%     { transform: translateX(340%); }
+  50%    { transform: translateX(-140%); }
+  50.01% { transform: translateX(340%); }
+  50.02% { transform: translateX(340%); }
+  100%   { transform: translateX(340%); }
 }
 /* Light Cycle race — orange (5% slower sweep, same total cycle) */
 @keyframes lc-race-orange {
-  0%        { transform: translateX(100%); visibility: visible; }
-  52.5%     { transform: translateX(-100%); visibility: visible; }
-  52.51%    { visibility: hidden; }
-  99.99%    { transform: translateX(100%); visibility: hidden; }
-  100%      { transform: translateX(100%); visibility: visible; }
+  0%     { transform: translateX(340%); }
+  52.5%  { transform: translateX(-140%); }
+  52.51% { transform: translateX(340%); }
+  52.52% { transform: translateX(340%); }
+  100%   { transform: translateX(340%); }
 }
 /* Intermittent on/off — lines appear and disappear sharply */
 @keyframes lc-flash-blue {

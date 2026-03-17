@@ -129,6 +129,58 @@ export function MoodPlayerButton() {
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
   const [hovered, setHovered] = useState(false);
   const [showLines, setShowLines] = useState(false);
+  const blueRef = useRef<HTMLDivElement>(null);
+  const orangeRef = useRef<HTMLDivElement>(null);
+
+  // JS-driven light cycle animation
+  useEffect(() => {
+    if (!showLines) return;
+    let raf: number;
+    const RACE_MS = 5100;       // time to cross the button
+    const PAUSE_MS = 5000;      // pause before next race
+    const CYCLE = RACE_MS + PAUSE_MS;
+    const ORANGE_DELAY = 0.015; // orange is 1.5% behind in progress
+
+    const start = performance.now();
+    const animate = (now: number) => {
+      const elapsed = (now - start) % CYCLE;
+      const racing = elapsed < RACE_MS;
+
+      // Blue: progress 0→1 during race
+      const blueP = racing ? elapsed / RACE_MS : -1;
+      // Orange: slightly behind
+      const orangeP = racing ? Math.max(0, elapsed / RACE_MS - ORANGE_DELAY) : -1;
+
+      // width=30%, so translateX is relative to element width (30% of parent)
+      // 350% of 30% = 105% of parent (offscreen right)
+      // -140% of 30% = -42% of parent (offscreen left)
+      const START = 350;
+      const END = -140;
+      const RANGE = START - END; // 490
+
+      if (blueRef.current) {
+        if (blueP >= 0) {
+          const x = START - blueP * RANGE;
+          blueRef.current.style.transform = `translateX(${x}%)`;
+          blueRef.current.style.opacity = "1";
+        } else {
+          blueRef.current.style.opacity = "0";
+        }
+      }
+      if (orangeRef.current) {
+        if (orangeP >= 0) {
+          const x = START - orangeP * RANGE;
+          orangeRef.current.style.transform = `translateX(${x}%)`;
+          orangeRef.current.style.opacity = "1";
+        } else {
+          orangeRef.current.style.opacity = "0";
+        }
+      }
+      raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf);
+  }, [showLines]);
 
   useEffect(() => {
     if (!playing) {
@@ -238,12 +290,13 @@ export function MoodPlayerButton() {
           <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-full">
             {/* Blue cycle — in the lead */}
             <div
+              ref={blueRef}
               className="absolute top-[38%] h-[2px]"
               style={{
-                width: "100%",
+                width: "30%",
                 background: "rgba(6,182,212,0.9)",
                 boxShadow: "0 0 4px rgba(6,182,212,0.6), 0 0 8px rgba(6,182,212,0.3)",
-                animation: "lc-race-blue 10.2s linear infinite",
+                willChange: "transform",
               }}
             >
               <div className="absolute left-0 top-[-2px] w-[6px] h-[6px] rounded-full" style={{
@@ -263,12 +316,13 @@ export function MoodPlayerButton() {
             </div>
             {/* Orange cycle — slightly behind blue */}
             <div
+              ref={orangeRef}
               className="absolute top-[62%] h-[2px]"
               style={{
-                width: "100%",
+                width: "30%",
                 background: "rgba(251,191,36,0.85)",
                 boxShadow: "0 0 4px rgba(251,191,36,0.5), 0 0 8px rgba(245,158,11,0.3)",
-                animation: "lc-race-orange 10.2s linear infinite",
+                willChange: "transform",
               }}
             >
               <div className="absolute left-0 top-[-2px] w-[6px] h-[6px] rounded-full" style={{

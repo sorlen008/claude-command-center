@@ -29,6 +29,15 @@ export const AgentExecListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 
+export const DeepSearchSchema = z.object({
+  q: z.string().min(1).max(500),
+  field: z.enum(["all", "user", "assistant"]).default("all"),
+  dateFrom: z.string().max(30).optional(),
+  dateTo: z.string().max(30).optional(),
+  project: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 export const DiscoveryQuerySchema = z.object({
   q: z.string().min(1, "Query parameter 'q' is required").max(200),
 });

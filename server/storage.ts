@@ -1,5 +1,5 @@
 import { getDB, save } from "./db";
-import type { Entity, EntityType, Relationship, MarkdownBackup, ScanStatus, AppSettings, CustomNode, CustomEdge, EntityOverride } from "@shared/types";
+import type { Entity, EntityType, Relationship, MarkdownBackup, ScanStatus, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary } from "@shared/types";
 import { getCachedStats } from "./scanner/session-scanner";
 import { getCachedAgentStats } from "./scanner/agent-scanner";
 
@@ -225,6 +225,32 @@ export class Storage {
     const db = getDB();
     db.entityOverrides = overrides;
     save();
+  }
+
+  // Session Summaries
+  getSummary(sessionId: string): SessionSummary | null {
+    return getDB().sessionSummaries[sessionId] || null;
+  }
+
+  getSummaries(): Record<string, SessionSummary> {
+    return getDB().sessionSummaries;
+  }
+
+  upsertSummary(summary: SessionSummary): void {
+    const db = getDB();
+    db.sessionSummaries[summary.sessionId] = summary;
+    save();
+  }
+
+  deleteSummary(sessionId: string): void {
+    const db = getDB();
+    delete db.sessionSummaries[sessionId];
+    save();
+  }
+
+  getUnsummarizedSessionIds(allIds: string[]): string[] {
+    const summaries = getDB().sessionSummaries;
+    return allIds.filter(id => !summaries[id]);
   }
 
   // Stats

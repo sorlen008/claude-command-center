@@ -5,8 +5,13 @@ import path from "path";
 import os from "os";
 import { getCachedSessions, getCachedStats, removeCachedSession, restoreCachedSession } from "../scanner/session-scanner";
 import { CLAUDE_DIR, decodeProjectKey, dirExists, readMessageTimeline } from "../scanner/utils";
-import { SessionIdSchema, SessionListSchema, IdsArraySchema, validate, qstr } from "./validation";
+import { SessionIdSchema, SessionListSchema, IdsArraySchema, DeepSearchSchema, validate, qstr } from "./validation";
 import { TRASH_DIR, MAX_SESSIONS_RESPONSE } from "../config";
+import { deepSearch } from "../scanner/deep-search";
+import { summarizeSession, summarizeBatch } from "../scanner/session-summarizer";
+import { getCostAnalytics, getFileHeatmap, getHealthAnalytics, getSessionCost, getStaleAnalytics } from "../scanner/session-analytics";
+import { getSessionCommits } from "../scanner/commit-linker";
+import { storage } from "../storage";
 
 const router = Router();
 
@@ -134,12 +139,142 @@ router.get("/api/sessions", (req: Request, res: Response) => {
   const start = (page - 1) * limit;
   const paged = sessions.slice(start, Math.min(start + limit, cappedTotal));
 
+  // Annotate sessions with summary data
+  const summaries = storage.getSummaries();
+  const annotated = paged.map(s => {
+    const summary = summaries[s.id];
+    return {
+      ...s,
+      hasSummary: !!summary,
+      summaryTopics: summary?.topics || [],
+      summaryOutcome: summary?.outcome || null,
+    };
+  });
+
   res.json({
-    sessions: paged,
+    sessions: annotated,
     stats,
     canUndo: lastDeleteBatch.length > 0,
     pagination: { page, limit, total, totalPages },
   });
+});
+
+/** GET /api/sessions/search — Deep search across all session content */
+router.get("/api/sessions/search", async (req: Request, res: Response) => {
+  const params = validate(DeepSearchSchema, {
+    q: qstr(req.query.q),
+    field: qstr(req.query.field),
+    dateFrom: qstr(req.query.dateFrom),
+    dateTo: qstr(req.query.dateTo),
+    project: qstr(req.query.project),
+    limit: qstr(req.query.limit),
+  }, res);
+  if (!params) return;
+
+  try {
+    const sessions = getCachedSessions();
+    const summaries = storage.getSummaries();
+    const result = await deepSearch({
+      query: params.q,
+      sessions,
+      field: params.field,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      project: params.project,
+      summaries,
+      limit: params.limit,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("[sessions] Deep search failed:", (err as Error).message);
+    res.status(500).json({ message: "Search failed" });
+  }
+});
+
+/** POST /api/sessions/summarize-batch — Summarize up to 10 unsummarized sessions */
+router.post("/api/sessions/summarize-batch", async (_req: Request, res: Response) => {
+  try {
+    const sessions = getCachedSessions();
+    const result = await summarizeBatch(sessions, 10);
+    res.json(result);
+  } catch (err) {
+    console.error("[sessions] Batch summarize failed:", (err as Error).message);
+    res.status(500).json({ message: "Batch summarization failed" });
+  }
+});
+
+/** GET /api/sessions/analytics/costs — Cost analytics across all sessions */
+router.get("/api/sessions/analytics/costs", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(getCostAnalytics(sessions));
+});
+
+/** GET /api/sessions/analytics/files — File heatmap */
+router.get("/api/sessions/analytics/files", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(getFileHeatmap(sessions));
+});
+
+/** GET /api/sessions/analytics/health — Session health scores */
+router.get("/api/sessions/analytics/health", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(getHealthAnalytics(sessions));
+});
+
+/** GET /api/sessions/analytics/stale — Stale session suggestions */
+router.get("/api/sessions/analytics/stale", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(getStaleAnalytics(sessions));
+});
+
+/** POST /api/sessions/context-loader — Generate context prompt for a project */
+router.post("/api/sessions/context-loader", (req: Request, res: Response) => {
+  const project = (req.body as { project?: string })?.project;
+  if (!project) return res.status(400).json({ message: "project is required" });
+
+  const sessions = getCachedSessions();
+  const summaries = storage.getSummaries();
+
+  // Find sessions for this project, newest first, with summaries
+  const projectSessions = sessions
+    .filter(s => {
+      const decoded = decodeProjectKey(s.projectKey);
+      return decoded.endsWith("/" + project) || decoded.endsWith("\\" + project) || s.projectKey === project || s.cwd.includes(project);
+    })
+    .sort((a, b) => (b.lastTs || "").localeCompare(a.lastTs || ""));
+
+  const relevantSessions = projectSessions.slice(0, 10);
+  const parts: string[] = [];
+  parts.push(`# Context from ${relevantSessions.length} recent sessions for "${project}"\n`);
+
+  let tokensEstimate = 0;
+  let used = 0;
+
+  for (const s of relevantSessions) {
+    const summary = summaries[s.id];
+    if (summary) {
+      parts.push(`## Session: ${s.firstMessage?.slice(0, 80) || s.slug}`);
+      parts.push(`- Date: ${s.lastTs?.slice(0, 10) || "unknown"}`);
+      parts.push(`- Outcome: ${summary.outcome}`);
+      parts.push(`- Topics: ${summary.topics.join(", ")}`);
+      parts.push(`- Summary: ${summary.summary}`);
+      if (summary.filesModified.length > 0) {
+        parts.push(`- Files: ${summary.filesModified.join(", ")}`);
+      }
+      parts.push("");
+      used++;
+    } else {
+      parts.push(`## Session: ${s.firstMessage?.slice(0, 80) || s.slug}`);
+      parts.push(`- Date: ${s.lastTs?.slice(0, 10) || "unknown"} | ${s.messageCount} messages`);
+      parts.push("");
+      used++;
+    }
+  }
+
+  const prompt = parts.join("\n");
+  tokensEstimate = Math.round(prompt.length / 4);
+
+  res.json({ prompt, sessionsUsed: used, tokensEstimate });
 });
 
 /** GET /api/sessions/:id — Session detail with message timeline */
@@ -295,6 +430,65 @@ router.get("/api/sessions/:id/messages", (req: Request, res: Response) => {
     totalMessages,
     messages,
   });
+});
+
+/** GET /api/sessions/:id/costs — Per-session cost breakdown */
+router.get("/api/sessions/:id/costs", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+
+  const sessions = getCachedSessions();
+  const cost = getSessionCost(sessions, idResult.data);
+  if (!cost) return res.status(404).json({ message: "No cost data found" });
+
+  res.json(cost);
+});
+
+/** GET /api/sessions/:id/commits — Git commits linked to session */
+router.get("/api/sessions/:id/commits", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+
+  const session = getCachedSessions().find(s => s.id === idResult.data);
+  if (!session) return res.status(404).json({ message: "Session not found" });
+
+  const commits = getSessionCommits(session);
+  res.json({ sessionId: session.id, commits });
+});
+
+/** GET /api/sessions/:id/summary — Get stored summary for a session */
+router.get("/api/sessions/:id/summary", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+
+  const summary = storage.getSummary(idResult.data);
+  if (!summary) return res.status(404).json({ message: "No summary found for this session" });
+
+  res.json(summary);
+});
+
+/** POST /api/sessions/:id/summarize — Generate summary for a session */
+router.post("/api/sessions/:id/summarize", async (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+
+  const session = getCachedSessions().find(s => s.id === idResult.data);
+  if (!session) return res.status(404).json({ message: "Session not found" });
+
+  // Return cached unless force=true
+  const force = qstr(req.query.force) === "true";
+  if (!force) {
+    const existing = storage.getSummary(session.id);
+    if (existing) return res.json(existing);
+  }
+
+  try {
+    const summary = await summarizeSession(session);
+    res.json(summary);
+  } catch (err) {
+    console.error("[sessions] Summarize failed:", (err as Error).message);
+    res.status(500).json({ message: "Failed to generate summary" });
+  }
 });
 
 /** DELETE /api/sessions/:id — Delete a single session (moves to trash) */

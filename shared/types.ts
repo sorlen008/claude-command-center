@@ -363,6 +363,120 @@ export interface SessionData {
   cwd: string;
   version: string;
   gitBranch: string;
+  hasSummary?: boolean;
+  summaryTopics?: string[];
+  summaryOutcome?: string | null;
+}
+
+export interface SessionSummary {
+  sessionId: string;
+  summary: string;
+  topics: string[];
+  toolsUsed: string[];
+  outcome: "completed" | "abandoned" | "ongoing" | "error";
+  filesModified: string[];
+  generatedAt: string;
+  model: string;
+}
+
+export interface DeepSearchMatch {
+  sessionId: string;
+  session: SessionData;
+  matches: Array<{
+    role: "user" | "assistant";
+    text: string;
+    timestamp: string;
+    lineIndex: number;
+  }>;
+  matchCount: number;
+  summary?: SessionSummary;
+}
+
+export interface DeepSearchResult {
+  results: DeepSearchMatch[];
+  totalMatches: number;
+  totalSessions: number;
+  searchedSessions: number;
+  durationMs: number;
+}
+
+export interface SessionCostData {
+  sessionId: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  estimatedCostUsd: number;
+  models: string[];
+  modelBreakdown: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number }>;
+}
+
+export interface CostAnalytics {
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalSessions: number;
+  byProject: Record<string, { cost: number; sessions: number; tokens: number }>;
+  byDay: Array<{ date: string; cost: number; sessions: number; tokens: number }>;
+  byModel: Record<string, { cost: number; tokens: number; sessions: number }>;
+  topSessions: Array<{ sessionId: string; firstMessage: string; cost: number; tokens: number }>;
+  durationMs: number;
+}
+
+export interface FileHeatmapEntry {
+  filePath: string;
+  fileName: string;
+  touchCount: number;
+  sessionCount: number;
+  operations: { read: number; write: number; edit: number };
+  lastTouched: string;
+  sessions: string[];
+}
+
+export interface FileHeatmapResult {
+  files: FileHeatmapEntry[];
+  totalFiles: number;
+  totalOperations: number;
+  durationMs: number;
+}
+
+export interface SessionHealth {
+  sessionId: string;
+  toolErrors: number;
+  retries: number;
+  totalToolCalls: number;
+  healthScore: "good" | "fair" | "poor";
+}
+
+export interface HealthAnalytics {
+  sessions: SessionHealth[];
+  avgToolErrors: number;
+  avgRetries: number;
+  poorCount: number;
+  fairCount: number;
+  goodCount: number;
+  durationMs: number;
+}
+
+export interface CommitLink {
+  hash: string;
+  message: string;
+  timestamp: string;
+  filesChanged: number;
+}
+
+export interface StaleAnalytics {
+  stale: Array<{ id: string; firstMessage: string; lastTs: string; messageCount: number; sizeBytes: number }>;
+  empty: Array<{ id: string; sizeBytes: number }>;
+  totalStale: number;
+  totalEmpty: number;
+  reclaimableBytes: number;
+}
+
+export interface ContextLoaderResult {
+  prompt: string;
+  sessionsUsed: number;
+  tokensEstimate: number;
 }
 
 export interface SessionStats {
