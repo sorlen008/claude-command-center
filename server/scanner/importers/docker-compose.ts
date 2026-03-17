@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { CustomNode, CustomEdge } from "@shared/types";
-import { discoverProjectDirs, fileExists, HOME } from "../utils";
+import { discoverProjectDirs, fileExists, HOME, normPath } from "../utils";
 
 interface DockerService {
   image?: string;
@@ -129,7 +129,7 @@ export function scanDockerCompose(): { nodes: CustomNode[]; edges: CustomEdge[] 
 
   for (const dir of searchDirs) {
     for (const filename of ["docker-compose.yml", "docker-compose.yaml", "docker-compose.test.yml", "compose.yml", "compose.yaml"]) {
-      const filePath = path.join(dir, filename).replace(/\\/g, "/");
+      const filePath = normPath(dir, filename);
       if (fileExists(filePath) && !composeFiles.includes(filePath)) {
         composeFiles.push(filePath);
       }

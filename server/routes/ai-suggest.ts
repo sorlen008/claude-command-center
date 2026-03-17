@@ -179,6 +179,12 @@ Respond with ONLY valid JSON (no markdown, no explanation):
 
     child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
     child.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+    child.on("error", (err: Error) => {
+      clearTimeout(timeout);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to spawn claude CLI", error: err.message });
+      }
+    });
 
     const timeout = setTimeout(() => {
       child.kill();

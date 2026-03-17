@@ -104,39 +104,38 @@ export async function runFullScan(): Promise<void> {
     const allCustomNodes: CustomNode[] = [];
     const allCustomEdges: CustomEdge[] = [];
 
-    try {
+    const safeScan = (label: string, fn: () => void): void => {
+      try {
+        fn();
+      } catch (err) {
+        console.error(`[scanner] ${label} error:`, err);
+      }
+    };
+
+    safeScan("Docker compose scan", () => {
       const docker = scanDockerCompose();
       allCustomNodes.push(...docker.nodes);
       allCustomEdges.push(...docker.edges);
-    } catch (err) {
-      console.error("[scanner] Docker compose scan error:", err);
-    }
+    });
 
-    try {
+    safeScan("DB URL extraction", () => {
       const dbNodes = extractDbNodesFromMcps(mcps);
       allCustomNodes.push(...dbNodes.nodes);
       allCustomEdges.push(...dbNodes.edges);
-    } catch (err) {
-      console.error("[scanner] DB URL extraction error:", err);
-    }
+    });
 
-    try {
+    safeScan("Env services scan", () => {
       const envSvcs = scanEnvServices();
       allCustomNodes.push(...envSvcs.nodes);
       allCustomEdges.push(...envSvcs.edges);
-    } catch (err) {
-      console.error("[scanner] Env services scan error:", err);
-    }
+    });
 
-    try {
+    safeScan("Git remotes scan", () => {
       const gitEdges = scanGitRemotes(projects);
       allCustomEdges.push(...gitEdges);
-    } catch (err) {
-      console.error("[scanner] Git remotes scan error:", err);
-    }
+    });
 
-    // Graph config file (user-defined YAML)
-    try {
+    safeScan("Graph config scan", () => {
       const graphConfig = scanGraphConfig();
       allCustomNodes.push(...graphConfig.nodes);
       allCustomEdges.push(...graphConfig.edges);
@@ -145,40 +144,23 @@ export async function runFullScan(): Promise<void> {
       if (Object.keys(graphConfig.overrides).length > 0) {
         storage.replaceEntityOverrides(graphConfig.overrides);
       }
-    } catch (err) {
-      console.error("[scanner] Graph config scan error:", err);
-    }
+    });
 
-    // API config file (apis-config.yaml)
-    try {
+    safeScan("API config scan", () => {
       const apiConfig = scanApiConfig();
       // Skip nodes that already exist from graph-config.yaml
       const existingIds = new Set(allCustomNodes.map((n) => n.id));
       const newApiNodes = apiConfig.nodes.filter((n) => !existingIds.has(n.id));
       allCustomNodes.push(...newApiNodes);
       allCustomEdges.push(...apiConfig.edges);
-    } catch (err) {
-      console.error("[scanner] API config scan error:", err);
-    }
+    });
 
     // Store auto-discovered + config custom nodes/edges (replace per source)
-    const autoNodes = allCustomNodes.filter((n) => n.source === "auto-discovered");
-    const dockerNodes = allCustomNodes.filter((n) => n.source === "docker-compose");
-    const configNodes = allCustomNodes.filter((n) => n.source === "config-file");
-    const apiConfigNodes = allCustomNodes.filter((n) => n.source === "api-config");
-    storage.replaceCustomNodes(autoNodes, "auto-discovered");
-    storage.replaceCustomNodes(dockerNodes, "docker-compose");
-    storage.replaceCustomNodes(configNodes, "config-file");
-    storage.replaceCustomNodes(apiConfigNodes, "api-config");
-
-    const autoEdges = allCustomEdges.filter((e) => e.source_origin === "auto-discovered");
-    const dockerEdges = allCustomEdges.filter((e) => e.source_origin === "docker-compose");
-    const configEdges = allCustomEdges.filter((e) => e.source_origin === "config-file");
-    const apiConfigEdges = allCustomEdges.filter((e) => e.source_origin === "api-config");
-    storage.replaceCustomEdges(autoEdges, "auto-discovered");
-    storage.replaceCustomEdges(dockerEdges, "docker-compose");
-    storage.replaceCustomEdges(configEdges, "config-file");
-    storage.replaceCustomEdges(apiConfigEdges, "api-config");
+    const sourceTypes = ["auto-discovered", "docker-compose", "config-file", "api-config"] as const;
+    for (const src of sourceTypes) {
+      storage.replaceCustomNodes(allCustomNodes.filter((n) => n.source === src), src);
+      storage.replaceCustomEdges(allCustomEdges.filter((e) => e.source_origin === src), src);
+    }
 
     lastScanDuration = Date.now() - start;
     scanVersion++;

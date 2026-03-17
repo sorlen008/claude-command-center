@@ -41,6 +41,7 @@ function openPath(p: string): void {
   } else {
     child = spawn("xdg-open", [resolved], { detached: true, stdio: "ignore" });
   }
+  child.on("error", () => {}); // prevent unhandled error event crash
   child.unref();
 }
 

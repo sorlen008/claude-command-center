@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Switch, Route } from "wouter";
 import { useEffect } from "react";
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { GlobalSearch } from "@/components/global-search";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -47,30 +48,32 @@ function Router() {
     <Layout>
       <DynamicTitle />
       <OnboardingWizard />
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/projects" component={Projects} />
-        <Route path="/projects/:id" component={ProjectDetail} />
-        <Route path="/mcps" component={MCPs} />
-        <Route path="/skills" component={Skills} />
-        <Route path="/plugins" component={Plugins} />
-        <Route path="/markdown" component={MarkdownFiles} />
-        <Route path="/markdown/:id" component={MarkdownEdit} />
-        <Route path="/graph" component={GraphPage} />
-        <Route path="/discovery" component={Discovery} />
-        <Route path="/config" component={Config} />
-        <Route path="/activity" component={ActivityPage} />
-        <Route path="/sessions" component={Sessions} />
-        <Route path="/agents" component={Agents} />
-        <Route path="/live" component={Live} />
-        <Route path="/settings" component={SettingsPage} />
-        <Route path="/rules" component={Rules} />
-        <Route path="/stats" component={Stats} />
-        <Route path="/costs" component={CostDashboard} />
-        <Route path="/messages" component={MessageHistory} />
-        <Route path="/apis" component={APIs} />
-        <Route component={NotFound} />
-      </Switch>
+      <ErrorBoundary>
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/projects" component={Projects} />
+          <Route path="/projects/:id" component={ProjectDetail} />
+          <Route path="/mcps" component={MCPs} />
+          <Route path="/skills" component={Skills} />
+          <Route path="/plugins" component={Plugins} />
+          <Route path="/markdown" component={MarkdownFiles} />
+          <Route path="/markdown/:id" component={MarkdownEdit} />
+          <Route path="/graph" component={GraphPage} />
+          <Route path="/discovery" component={Discovery} />
+          <Route path="/config" component={Config} />
+          <Route path="/activity" component={ActivityPage} />
+          <Route path="/sessions" component={Sessions} />
+          <Route path="/agents" component={Agents} />
+          <Route path="/live" component={Live} />
+          <Route path="/settings" component={SettingsPage} />
+          <Route path="/rules" component={Rules} />
+          <Route path="/stats" component={Stats} />
+          <Route path="/costs" component={CostDashboard} />
+          <Route path="/messages" component={MessageHistory} />
+          <Route path="/apis" component={APIs} />
+          <Route component={NotFound} />
+        </Switch>
+      </ErrorBoundary>
     </Layout>
   );
 }

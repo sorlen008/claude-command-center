@@ -1,4 +1,4 @@
-import { CLAUDE_DIR, dirExists, fileExists, readHead, readTailTs, extractText } from "./utils";
+import { CLAUDE_DIR, dirExists, fileExists, readHead, readTailTs, extractText, normPath } from "./utils";
 import path from "path";
 import fs from "fs";
 import type { SessionData, SessionStats } from "@shared/types";
@@ -93,7 +93,7 @@ let cachedHistoryIndex = new Map<string, any[]>();
 
 /** Parse history.jsonl -> Map<sessionId, entries[]> (cached, incremental) */
 function buildHistoryIndex(): Map<string, any[]> {
-  const historyPath = path.join(CLAUDE_DIR, "history.jsonl").replace(/\\/g, "/");
+  const historyPath = normPath(CLAUDE_DIR, "history.jsonl");
   if (!fileExists(historyPath)) {
     // File gone — reset cache
     lastHistorySize = 0;
@@ -158,7 +158,7 @@ function buildHistoryIndex(): Map<string, any[]> {
 /** Read ~/.claude/sessions/*.json -> Set of active session IDs */
 function getActiveSessions(): Set<string> {
   const active = new Set<string>();
-  const sessionsDir = path.join(CLAUDE_DIR, "sessions").replace(/\\/g, "/");
+  const sessionsDir = normPath(CLAUDE_DIR, "sessions");
   if (!dirExists(sessionsDir)) return active;
   try {
     const files = fs.readdirSync(sessionsDir, { withFileTypes: true });
@@ -268,7 +268,7 @@ export function scanAllSessions(): {
   stats: SessionStats;
   perProject: ProjectSessionAgg[];
 } {
-  const projectsDir = path.join(CLAUDE_DIR, "projects").replace(/\\/g, "/");
+  const projectsDir = normPath(CLAUDE_DIR, "projects");
   if (!dirExists(projectsDir)) {
     cachedSessions = [];
     cachedStats = { totalCount: 0, totalSize: 0, activeCount: 0, emptyCount: 0 };
@@ -284,7 +284,7 @@ export function scanAllSessions(): {
     const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
     for (const dir of dirs) {
       if (!dir.isDirectory()) continue;
-      const projectDir = path.join(projectsDir, dir.name).replace(/\\/g, "/");
+      const projectDir = normPath(projectsDir, dir.name);
       let projCount = 0;
       let projSize = 0;
       let projLastMod: string | null = null;
@@ -293,7 +293,7 @@ export function scanAllSessions(): {
         const files = fs.readdirSync(projectDir, { withFileTypes: true });
         for (const f of files) {
           if (!f.isFile() || !f.name.endsWith(".jsonl")) continue;
-          const filePath = path.join(projectDir, f.name).replace(/\\/g, "/");
+          const filePath = normPath(projectDir, f.name);
           const session = parseSession(filePath, dir.name, historyIndex, activeSessions);
           if (session) {
             allSessions.push(session);

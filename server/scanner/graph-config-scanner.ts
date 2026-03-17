@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { CustomNode, CustomEdge, EntityOverride, GraphConfigYaml, CustomNodeSubType } from "@shared/types";
-import { HOME, CLAUDE_DIR, fileExists, discoverProjectDirs } from "./utils";
+import { HOME, CLAUDE_DIR, fileExists, discoverProjectDirs, normPath } from "./utils";
 
 /** Minimal YAML parser for graph-config.yaml files.
  *  Handles the structured format we expect: nodes/edges/overrides arrays. */
@@ -88,16 +88,16 @@ export function scanGraphConfig(): {
 
   // Search locations for graph-config.yaml
   const searchPaths: string[] = [
-    path.join(HOME, "graph-config.yaml").replace(/\\/g, "/"),
-    path.join(HOME, "graph-config.yml").replace(/\\/g, "/"),
-    path.join(CLAUDE_DIR, "graph-config.yaml").replace(/\\/g, "/"),
-    path.join(CLAUDE_DIR, "graph-config.yml").replace(/\\/g, "/"),
+    normPath(HOME, "graph-config.yaml"),
+    normPath(HOME, "graph-config.yml"),
+    normPath(CLAUDE_DIR, "graph-config.yaml"),
+    normPath(CLAUDE_DIR, "graph-config.yml"),
   ];
 
   // Also check project directories
   for (const dir of discoverProjectDirs()) {
-    searchPaths.push(path.join(dir, "graph-config.yaml").replace(/\\/g, "/"));
-    searchPaths.push(path.join(dir, "graph-config.yml").replace(/\\/g, "/"));
+    searchPaths.push(normPath(dir, "graph-config.yaml"));
+    searchPaths.push(normPath(dir, "graph-config.yml"));
   }
 
   for (const configPath of searchPaths) {

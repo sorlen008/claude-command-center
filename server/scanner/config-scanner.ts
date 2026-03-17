@@ -1,5 +1,5 @@
 import type { Entity } from "@shared/types";
-import { entityId, safeReadJson, getFileStat, CLAUDE_DIR, now, fileExists } from "./utils";
+import { entityId, safeReadJson, getFileStat, CLAUDE_DIR, now, fileExists, normPath } from "./utils";
 import path from "path";
 
 function redactSecrets(obj: any, depth = 0): any {
@@ -28,7 +28,7 @@ export function scanConfigs(): Entity[] {
   ];
 
   for (const { name, type } of configFiles) {
-    const filePath = path.join(CLAUDE_DIR, name).replace(/\\/g, "/");
+    const filePath = normPath(CLAUDE_DIR, name);
     if (!fileExists(filePath)) continue;
 
     const json = safeReadJson(filePath);

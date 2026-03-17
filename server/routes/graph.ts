@@ -117,13 +117,15 @@ router.get("/api/graph", (req: Request, res: Response) => {
       entityNameToId.set(cn.label.toLowerCase().replace(/\s+/g, "-"), cn.id);
     }
 
+    // Build Set for O(1) custom node lookup
+    const customNodeIds = new Set(customNodesList.map((n) => n.id));
+
     for (const ce of allCustomEdges) {
       const resolvedSource = entityNameToId.get(ce.source) || entityNameToId.get(ce.source.toLowerCase());
       const resolvedTarget = entityNameToId.get(ce.target) || entityNameToId.get(ce.target.toLowerCase());
       if (resolvedSource && resolvedTarget) {
-        // Check that both ends exist in the graph
-        const sourceInGraph = entityIds.has(resolvedSource) || customNodesList.some((n) => n.id === resolvedSource);
-        const targetInGraph = entityIds.has(resolvedTarget) || customNodesList.some((n) => n.id === resolvedTarget);
+        const sourceInGraph = entityIds.has(resolvedSource) || customNodeIds.has(resolvedSource);
+        const targetInGraph = entityIds.has(resolvedTarget) || customNodeIds.has(resolvedTarget);
         if (sourceInGraph && targetInGraph) {
           customEdgesList.push({ ...ce, source: resolvedSource, target: resolvedTarget });
           g.setEdge(resolvedSource, resolvedTarget);

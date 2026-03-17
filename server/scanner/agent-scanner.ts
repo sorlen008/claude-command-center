@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import matter from "gray-matter";
-import { CLAUDE_DIR, entityId, safeReadJson, dirExists, fileExists, readHead, readTailTs, extractText } from "./utils";
+import { CLAUDE_DIR, entityId, safeReadJson, dirExists, fileExists, readHead, readTailTs, extractText, normPath } from "./utils";
 import type { AgentDefinition, AgentExecution, AgentStats } from "@shared/types";
 
 // Module-level cache
@@ -26,7 +26,7 @@ export function scanAgentDefinitions(): AgentDefinition[] {
 
   // Plugin agents: ~/.claude/plugins/marketplaces/*/plugins/*/agents/*.md
   // Sort marketplaces so "official" comes first (wins dedup)
-  const marketplacesDir = path.join(CLAUDE_DIR, "plugins/marketplaces").replace(/\\/g, "/");
+  const marketplacesDir = normPath(CLAUDE_DIR, "plugins/marketplaces");
   if (dirExists(marketplacesDir)) {
     try {
       const markets = fs.readdirSync(marketplacesDir, { withFileTypes: true })
@@ -39,15 +39,15 @@ export function scanAgentDefinitions(): AgentDefinition[] {
         });
 
       for (const market of markets) {
-        const pluginsDir = path.join(marketplacesDir, market.name, "plugins").replace(/\\/g, "/");
+        const pluginsDir = normPath(marketplacesDir, market.name, "plugins");
         if (!dirExists(pluginsDir)) continue;
         for (const plugin of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
           if (!plugin.isDirectory()) continue;
-          const agentsDir = path.join(pluginsDir, plugin.name, "agents").replace(/\\/g, "/");
+          const agentsDir = normPath(pluginsDir, plugin.name, "agents");
           if (!dirExists(agentsDir)) continue;
           for (const agentFile of fs.readdirSync(agentsDir, { withFileTypes: true })) {
             if (!agentFile.isFile() || !agentFile.name.endsWith(".md")) continue;
-            const filePath = path.join(agentsDir, agentFile.name).replace(/\\/g, "/");
+            const filePath = normPath(agentsDir, agentFile.name);
             const def = parseDefinition(filePath, "plugin", plugin.name, market.name);
             if (def) {
               // Deduplicate: skip agents with same name+plugin across different marketplaces
@@ -68,12 +68,12 @@ export function scanAgentDefinitions(): AgentDefinition[] {
   }
 
   // User agents: ~/.claude/agents/*.md
-  const userAgentsDir = path.join(CLAUDE_DIR, "agents").replace(/\\/g, "/");
+  const userAgentsDir = normPath(CLAUDE_DIR, "agents");
   if (dirExists(userAgentsDir)) {
     try {
       for (const f of fs.readdirSync(userAgentsDir, { withFileTypes: true })) {
         if (!f.isFile() || !f.name.endsWith(".md")) continue;
-        const filePath = path.join(userAgentsDir, f.name).replace(/\\/g, "/");
+        const filePath = normPath(userAgentsDir, f.name);
         const def = parseDefinition(filePath, "user");
         if (def) defs.push(def);
       }
@@ -163,7 +163,7 @@ function parseDefinition(filePath: string, source: "plugin" | "user" | "project"
 
 /** Scan all agent execution JSONL files */
 export function scanAgentExecutions(): { executions: AgentExecution[]; stats: AgentStats } {
-  const projectsDir = path.join(CLAUDE_DIR, "projects").replace(/\\/g, "/");
+  const projectsDir = normPath(CLAUDE_DIR, "projects");
   if (!dirExists(projectsDir)) {
     cachedExecutions = [];
     cachedAgentStats = { totalExecutions: 0, totalDefinitions: cachedDefinitions.length, sessionsWithAgents: 0, byType: {}, byModel: {} };
@@ -179,7 +179,7 @@ export function scanAgentExecutions(): { executions: AgentExecution[]; stats: Ag
     const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
     for (const dir of dirs) {
       if (!dir.isDirectory()) continue;
-      const projectDir = path.join(projectsDir, dir.name).replace(/\\/g, "/");
+      const projectDir = normPath(projectsDir, dir.name);
 
       // Look for subagents directory inside session directories
       try {
@@ -187,11 +187,11 @@ export function scanAgentExecutions(): { executions: AgentExecution[]; stats: Ag
         for (const sessionDir of sessionDirs) {
           // subagents can be directly in the project dir
           if (sessionDir.isDirectory() && sessionDir.name === "subagents") {
-            scanSubagentsDir(path.join(projectDir, "subagents").replace(/\\/g, "/"), dir.name, executions, sessionSet, byType, byModel);
+            scanSubagentsDir(normPath(projectDir, "subagents"), dir.name, executions, sessionSet, byType, byModel);
           }
           // Or inside session subdirectories
           if (sessionDir.isDirectory() && sessionDir.name !== "subagents" && sessionDir.name !== "memory") {
-            const subagentsPath = path.join(projectDir, sessionDir.name, "subagents").replace(/\\/g, "/");
+            const subagentsPath = normPath(projectDir, sessionDir.name, "subagents");
             if (dirExists(subagentsPath)) {
               scanSubagentsDir(subagentsPath, dir.name, executions, sessionSet, byType, byModel);
             }
@@ -237,7 +237,7 @@ function scanSubagentsDir(
     const files = fs.readdirSync(subagentsPath, { withFileTypes: true });
     for (const f of files) {
       if (!f.isFile() || !f.name.endsWith(".jsonl") || !f.name.startsWith("agent-")) continue;
-      const filePath = path.join(subagentsPath, f.name).replace(/\\/g, "/");
+      const filePath = normPath(subagentsPath, f.name);
       const exec = parseExecution(filePath, projectKey);
       if (exec) {
         executions.push(exec);

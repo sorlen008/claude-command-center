@@ -112,7 +112,7 @@ export class Storage {
   setCachedDiscovery(query: string, results: string): void {
     const db = getDB();
     db.discoveryCache[query] = { results, cachedAt: new Date().toISOString() };
-    // Cap cache at 100 entries (LRU: remove oldest)
+    // Cap cache at 100 entries (FIFO: remove oldest by cachedAt)
     const keys = Object.keys(db.discoveryCache);
     if (keys.length > 100) {
       const sorted = keys.sort((a, b) => {

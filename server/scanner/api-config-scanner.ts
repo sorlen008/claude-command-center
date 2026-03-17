@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { CustomNode, CustomEdge, ApiDefinition } from "@shared/types";
-import { HOME, CLAUDE_DIR, fileExists } from "./utils";
+import { HOME, CLAUDE_DIR, fileExists, normPath } from "./utils";
 
 /** Parse apis-config.yaml — handles string arrays (envKeys, consumers) */
 function parseApisConfigYaml(content: string): ApiDefinition[] {
@@ -95,10 +95,10 @@ export function scanApiConfig(): {
   const edges: CustomEdge[] = [];
 
   const searchPaths = [
-    path.join(HOME, "apis-config.yaml").replace(/\\/g, "/"),
-    path.join(HOME, "apis-config.yml").replace(/\\/g, "/"),
-    path.join(CLAUDE_DIR, "apis-config.yaml").replace(/\\/g, "/"),
-    path.join(CLAUDE_DIR, "apis-config.yml").replace(/\\/g, "/"),
+    normPath(HOME, "apis-config.yaml"),
+    normPath(HOME, "apis-config.yml"),
+    normPath(CLAUDE_DIR, "apis-config.yaml"),
+    normPath(CLAUDE_DIR, "apis-config.yml"),
   ];
 
   const seenIds = new Set<string>();

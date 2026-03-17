@@ -23,20 +23,33 @@ export function useLiveSync() {
 
       es.addEventListener("connected", (e) => {
         setConnected(true);
-        const data = JSON.parse(e.data);
-        setLastEvent({ type: "connected", ...data });
+        try {
+          const data = JSON.parse(e.data);
+          setLastEvent({ type: "connected", ...data });
+        } catch {}
       });
 
       es.addEventListener("scan-start", (e) => {
-        const data = JSON.parse(e.data);
-        setLastEvent({ type: "scan-start", ...data });
+        try {
+          const data = JSON.parse(e.data);
+          setLastEvent({ type: "scan-start", ...data });
+        } catch {}
       });
 
       es.addEventListener("scan-complete", (e) => {
-        const data = JSON.parse(e.data);
-        setLastEvent({ type: "scan-complete", ...data });
-        // Invalidate all queries so UI refreshes with new data
-        qc.invalidateQueries();
+        try {
+          const data = JSON.parse(e.data);
+          setLastEvent({ type: "scan-complete", ...data });
+        } catch {}
+        // Invalidate entity/scanner queries so UI refreshes with new data
+        qc.invalidateQueries({ queryKey: ["/api/entities"] });
+        qc.invalidateQueries({ queryKey: ["/api/scanner/status"] });
+        qc.invalidateQueries({ queryKey: ["/api/projects"] });
+        qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+        qc.invalidateQueries({ queryKey: ["/api/graph"] });
+        qc.invalidateQueries({ queryKey: ["/api/apis"] });
+        qc.invalidateQueries({ queryKey: ["/api/live"] });
+        qc.invalidateQueries({ queryKey: ["/api/stats"] });
       });
 
       es.onerror = () => {

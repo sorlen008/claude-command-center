@@ -1,5 +1,5 @@
 import type { Entity, MCPServerConfig, MCPConfigFile, CustomNode, CustomEdge } from "@shared/types";
-import { entityId, safeReadJson, getFileStat, HOME, CLAUDE_DIR, now, fileExists, discoverProjectDirs, listDirs, getExtraPaths } from "./utils";
+import { entityId, safeReadJson, getFileStat, HOME, CLAUDE_DIR, now, fileExists, discoverProjectDirs, listDirs, getExtraPaths, normPath } from "./utils";
 import { MCP_CATALOG } from "./knowledge-base";
 import path from "path";
 import fs from "fs";
@@ -89,33 +89,33 @@ export function scanMCPs(): Entity[] {
   const mcpFiles: string[] = [];
 
   // Root .mcp.json
-  const rootMcp = path.join(HOME, ".mcp.json").replace(/\\/g, "/");
+  const rootMcp = normPath(HOME, ".mcp.json");
   if (fileExists(rootMcp)) mcpFiles.push(rootMcp);
 
   // Project-level .mcp.json files
-  const projectsDir = path.join(CLAUDE_DIR, "projects").replace(/\\/g, "/");
+  const projectsDir = normPath(CLAUDE_DIR, "projects");
   try {
     const projectDirs = fs.readdirSync(projectsDir, { withFileTypes: true });
     for (const dir of projectDirs) {
       if (!dir.isDirectory()) continue;
-      const projectMcp = path.join(projectsDir, dir.name, ".mcp.json").replace(/\\/g, "/");
+      const projectMcp = normPath(projectsDir, dir.name, ".mcp.json");
       if (fileExists(projectMcp)) mcpFiles.push(projectMcp);
     }
   } catch {}
 
   // Discovered project directories that might have .mcp.json
   for (const projDir of discoverProjectDirs()) {
-    const projMcp = path.join(projDir, ".mcp.json").replace(/\\/g, "/");
+    const projMcp = normPath(projDir, ".mcp.json");
     if (fileExists(projMcp) && !mcpFiles.includes(projMcp)) mcpFiles.push(projMcp);
     // One level deep
     for (const sub of listDirs(projDir)) {
-      const subMcp = path.join(sub, ".mcp.json").replace(/\\/g, "/");
+      const subMcp = normPath(sub, ".mcp.json");
       if (fileExists(subMcp) && !mcpFiles.includes(subMcp)) mcpFiles.push(subMcp);
     }
   }
 
   // Plugin .mcp.json files
-  const pluginsDir = path.join(CLAUDE_DIR, "plugins", "marketplaces").replace(/\\/g, "/");
+  const pluginsDir = normPath(CLAUDE_DIR, "plugins", "marketplaces");
   try {
     const marketplaceDirs = fs.readdirSync(pluginsDir, { withFileTypes: true });
     for (const mktDir of marketplaceDirs) {
@@ -124,7 +124,7 @@ export function scanMCPs(): Entity[] {
         try {
           const entries = fs.readdirSync(dir, { withFileTypes: true });
           for (const entry of entries) {
-            const fullPath = path.join(dir, entry.name).replace(/\\/g, "/");
+            const fullPath = normPath(dir, entry.name);
             if (entry.isFile() && entry.name === ".mcp.json") {
               if (!mcpFiles.includes(fullPath)) mcpFiles.push(fullPath);
             } else if (entry.isDirectory() && entry.name !== ".git" && entry.name !== "node_modules") {

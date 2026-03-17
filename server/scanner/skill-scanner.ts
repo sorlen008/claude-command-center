@@ -1,5 +1,5 @@
 import type { Entity } from "@shared/types";
-import { entityId, safeReadText, getFileStat, CLAUDE_DIR, now, listDirs, fileExists, dirExists, getExtraPaths, discoverProjectDirs } from "./utils";
+import { entityId, safeReadText, getFileStat, CLAUDE_DIR, now, listDirs, fileExists, dirExists, getExtraPaths, discoverProjectDirs, normPath } from "./utils";
 import path from "path";
 import fs from "fs";
 import matter from "gray-matter";
@@ -19,18 +19,18 @@ export function scanSkills(): Entity[] {
   }
 
   // 1. Global skills: ~/.claude/skills/
-  addSkillDirs(path.join(CLAUDE_DIR, "skills").replace(/\\/g, "/"));
+  addSkillDirs(normPath(CLAUDE_DIR, "skills"));
 
   // 2. Plugin skills: ~/.claude/plugins/marketplaces/*/plugins/*/skills/
-  const marketplacesDir = path.join(CLAUDE_DIR, "plugins", "marketplaces").replace(/\\/g, "/");
+  const marketplacesDir = normPath(CLAUDE_DIR, "plugins", "marketplaces");
   if (dirExists(marketplacesDir)) {
     for (const mktDir of listDirs(marketplacesDir)) {
       // Check both plugins/ subfolder and direct plugin dirs
-      const pluginsSubDir = path.join(mktDir, "plugins").replace(/\\/g, "/");
+      const pluginsSubDir = normPath(mktDir, "plugins");
       const searchDirs = dirExists(pluginsSubDir) ? [pluginsSubDir, mktDir] : [mktDir];
       for (const searchDir of searchDirs) {
         for (const pluginDir of listDirs(searchDir)) {
-          const skillsInPlugin = path.join(pluginDir, "skills").replace(/\\/g, "/");
+          const skillsInPlugin = normPath(pluginDir, "skills");
           if (dirExists(skillsInPlugin)) {
             addSkillDirs(skillsInPlugin);
           }
@@ -39,10 +39,10 @@ export function scanSkills(): Entity[] {
     }
     // Also check external_plugins within marketplaces
     for (const mktDir of listDirs(marketplacesDir)) {
-      const extDir = path.join(mktDir, "external_plugins").replace(/\\/g, "/");
+      const extDir = normPath(mktDir, "external_plugins");
       if (dirExists(extDir)) {
         for (const pluginDir of listDirs(extDir)) {
-          const skillsInPlugin = path.join(pluginDir, "skills").replace(/\\/g, "/");
+          const skillsInPlugin = normPath(pluginDir, "skills");
           if (dirExists(skillsInPlugin)) {
             addSkillDirs(skillsInPlugin);
           }
@@ -53,7 +53,7 @@ export function scanSkills(): Entity[] {
 
   // 3. Project-local skills: <project>/.claude/skills/
   for (const projectDir of discoverProjectDirs()) {
-    const projectSkillsDir = path.join(projectDir, ".claude", "skills").replace(/\\/g, "/");
+    const projectSkillsDir = normPath(projectDir, ".claude", "skills");
     if (dirExists(projectSkillsDir)) {
       addSkillDirs(projectSkillsDir);
     }
@@ -65,7 +65,7 @@ export function scanSkills(): Entity[] {
   }
 
   for (const skillDir of skillDirs) {
-    const skillFile = path.join(skillDir, "SKILL.md").replace(/\\/g, "/");
+    const skillFile = normPath(skillDir, "SKILL.md");
     if (!fileExists(skillFile)) continue;
 
     const content = safeReadText(skillFile);

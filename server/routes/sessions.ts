@@ -215,7 +215,7 @@ function parseSessionMessages(filePath: string, offset: number, limit: number): 
   const MAX_MESSAGES = 2000; // Safety cap to prevent OOM
 
   try {
-    // Stream the file line by line instead of loading entirely into memory
+    // Read entire file then iterate lines (large files capped at MAX_MESSAGES)
     const content = fs.readFileSync(filePath, "utf-8");
     let pos = 0;
 
@@ -411,6 +411,7 @@ router.post("/api/sessions/:id/open", (req: Request, res: Response) => {
       env,
     });
   }
+  child.on("error", () => {}); // prevent unhandled error event crash
   child.unref();
   res.json({ message: "Opening session", id: session.id });
 });

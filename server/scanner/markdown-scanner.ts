@@ -1,5 +1,5 @@
 import type { Entity } from "@shared/types";
-import { entityId, safeReadText, getFileStat, HOME, CLAUDE_DIR, now, fileExists, dirExists, listFiles, discoverProjectDirs, listDirs } from "./utils";
+import { entityId, safeReadText, getFileStat, HOME, CLAUDE_DIR, now, fileExists, dirExists, listFiles, discoverProjectDirs, listDirs, normPath } from "./utils";
 import path from "path";
 import fs from "fs";
 import matter from "gray-matter";
@@ -77,20 +77,20 @@ export function scanMarkdown(): Entity[] {
   }
 
   // All .md in memory directories under ~/.claude/projects/*/memory/
-  const projectsDir = path.join(CLAUDE_DIR, "projects").replace(/\\/g, "/");
+  const projectsDir = normPath(CLAUDE_DIR, "projects");
   if (dirExists(projectsDir)) {
     try {
       const projectDirs = fs.readdirSync(projectsDir, { withFileTypes: true });
       for (const dir of projectDirs) {
         if (!dir.isDirectory()) continue;
-        const memDir = path.join(projectsDir, dir.name, "memory").replace(/\\/g, "/");
+        const memDir = normPath(projectsDir, dir.name, "memory");
         if (dirExists(memDir)) {
           for (const f of listFiles(memDir, ".md")) {
             addMarkdownFile(f);
           }
         }
         // Project-level CLAUDE.md
-        const projMd = path.join(projectsDir, dir.name, "CLAUDE.md").replace(/\\/g, "/");
+        const projMd = normPath(projectsDir, dir.name, "CLAUDE.md");
         addMarkdownFile(projMd);
       }
     } catch {}
@@ -98,40 +98,40 @@ export function scanMarkdown(): Entity[] {
 
   // Discovered project CLAUDE.md files
   for (const projDir of discoverProjectDirs()) {
-    addMarkdownFile(path.join(projDir, "CLAUDE.md").replace(/\\/g, "/"));
+    addMarkdownFile(normPath(projDir, "CLAUDE.md"));
     for (const sub of listDirs(projDir)) {
-      addMarkdownFile(path.join(sub, "CLAUDE.md").replace(/\\/g, "/"));
+      addMarkdownFile(normPath(sub, "CLAUDE.md"));
     }
   }
 
   // SKILL.md files — global skills
-  const skillsDir = path.join(CLAUDE_DIR, "skills").replace(/\\/g, "/");
+  const skillsDir = normPath(CLAUDE_DIR, "skills");
   if (dirExists(skillsDir)) {
     try {
       const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true });
       for (const dir of skillDirs) {
         if (!dir.isDirectory()) continue;
-        addMarkdownFile(path.join(skillsDir, dir.name, "SKILL.md").replace(/\\/g, "/"));
+        addMarkdownFile(normPath(skillsDir, dir.name, "SKILL.md"));
       }
     } catch {}
   }
 
   // SKILL.md files — project-local skills (<project>/.claude/skills/*/SKILL.md)
   for (const projDir of discoverProjectDirs()) {
-    const projSkillsDir = path.join(projDir, ".claude", "skills").replace(/\\/g, "/");
+    const projSkillsDir = normPath(projDir, ".claude", "skills");
     if (dirExists(projSkillsDir)) {
       try {
         const dirs = fs.readdirSync(projSkillsDir, { withFileTypes: true });
         for (const dir of dirs) {
           if (!dir.isDirectory()) continue;
-          addMarkdownFile(path.join(projSkillsDir, dir.name, "SKILL.md").replace(/\\/g, "/"));
+          addMarkdownFile(normPath(projSkillsDir, dir.name, "SKILL.md"));
         }
       } catch {}
     }
   }
 
   // SKILL.md files — plugin skills
-  const marketplacesDir = path.join(CLAUDE_DIR, "plugins", "marketplaces").replace(/\\/g, "/");
+  const marketplacesDir = normPath(CLAUDE_DIR, "plugins", "marketplaces");
   if (dirExists(marketplacesDir)) {
     try {
       // Recursively find all SKILL.md files under marketplaces
@@ -140,7 +140,7 @@ export function scanMarkdown(): Entity[] {
           const entries = fs.readdirSync(dir, { withFileTypes: true });
           for (const entry of entries) {
             if (entry.name === "node_modules" || entry.name === ".git") continue;
-            const full = path.join(dir, entry.name).replace(/\\/g, "/");
+            const full = normPath(dir, entry.name);
             if (entry.isFile() && entry.name === "SKILL.md") {
               addMarkdownFile(full);
             } else if (entry.isDirectory()) {

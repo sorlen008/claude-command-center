@@ -21,8 +21,14 @@ router.get("/api/markdown/:id", (req: Request, res: Response) => {
     return res.status(404).json({ message: "Markdown file not found" });
   }
 
+  // Re-validate path is under home directory
+  const safePath = validateMarkdownPath(entity.path);
+  if (!safePath) {
+    return res.status(403).json({ message: "Path must be under user home directory" });
+  }
+
   try {
-    const content = fs.readFileSync(entity.path, "utf-8");
+    const content = fs.readFileSync(safePath, "utf-8");
     res.json({ ...entity, content });
   } catch (err) {
     console.error("[markdown] Failed to read file:", (err as Error).message);
@@ -124,11 +130,17 @@ router.post("/api/markdown/:id/restore/:backupId", (req: Request, res: Response)
     return res.status(400).json({ message: "Backup does not belong to this file" });
   }
 
+  // Re-validate path is under home directory
+  const safePath = validateMarkdownPath(entity.path);
+  if (!safePath) {
+    return res.status(403).json({ message: "Path must be under user home directory" });
+  }
+
   try {
-    const currentContent = fs.readFileSync(entity.path, "utf-8");
-    storage.createBackup(entity.path, currentContent, "pre-restore");
-    fs.writeFileSync(entity.path, backup.content, "utf-8");
-    res.json({ message: "Restored", path: entity.path });
+    const currentContent = fs.readFileSync(safePath, "utf-8");
+    storage.createBackup(safePath, currentContent, "pre-restore");
+    fs.writeFileSync(safePath, backup.content, "utf-8");
+    res.json({ message: "Restored", path: safePath });
   } catch (err) {
     console.error("[markdown] Failed to restore file:", (err as Error).message);
     res.status(500).json({ message: "Could not restore file" });

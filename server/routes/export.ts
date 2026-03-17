@@ -1,8 +1,53 @@
 import { Router } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
 import { getDB, save } from "../db";
 
 const router = Router();
+
+const CustomNodeSchema = z.object({
+  id: z.string().min(1).max(200),
+  subType: z.enum(["service", "database", "api", "cicd", "deploy", "queue", "cache", "other"]),
+  label: z.string().min(1).max(200),
+  description: z.string().max(1000).optional(),
+  url: z.string().max(500).optional(),
+  icon: z.string().max(100).optional(),
+  color: z.string().max(20).optional(),
+  source: z.enum(["manual", "config-file", "api-config", "ai-suggested", "docker-compose", "auto-discovered"]),
+});
+
+const CustomEdgeSchema = z.object({
+  id: z.string().min(1).max(300),
+  source: z.string().min(1).max(200),
+  target: z.string().min(1).max(200),
+  label: z.string().min(1).max(100),
+  color: z.string().max(20).optional(),
+  dashed: z.boolean().optional(),
+  source_origin: z.enum(["manual", "config-file", "api-config", "ai-suggested", "docker-compose", "auto-discovered"]),
+});
+
+const ImportSchema = z.object({
+  version: z.string(),
+  customNodes: z.array(CustomNodeSchema).max(500).optional(),
+  customEdges: z.array(CustomEdgeSchema).max(2000).optional(),
+  entityOverrides: z.record(z.string(), z.object({
+    description: z.string().max(1000).optional(),
+    color: z.string().max(20).optional(),
+    label: z.string().max(200).optional(),
+  })).optional(),
+  appSettings: z.object({
+    appName: z.string().max(100),
+    onboarded: z.boolean(),
+    scanPaths: z.object({
+      homeDir: z.string().nullable(),
+      claudeDir: z.string().nullable(),
+      extraMcpFiles: z.array(z.string()),
+      extraProjectDirs: z.array(z.string()),
+      extraSkillDirs: z.array(z.string()),
+      extraPluginDirs: z.array(z.string()),
+    }),
+  }).optional(),
+}).passthrough();
 
 router.get("/api/export", (_req, res) => {
   res.json({
@@ -18,57 +63,33 @@ router.get("/api/export", (_req, res) => {
 });
 
 router.post("/api/import", (req, res) => {
-  const body = req.body;
-
-  // Validate the input has the expected shape
-  if (!body || typeof body !== "object") {
-    return res.status(400).json({ message: "Request body must be a JSON object" });
-  }
-  if (!body.version || typeof body.version !== "string") {
-    return res.status(400).json({ message: "Missing or invalid version field" });
-  }
-  if (body.customNodes !== undefined && !Array.isArray(body.customNodes)) {
-    return res.status(400).json({ message: "customNodes must be an array" });
-  }
-  if (body.customEdges !== undefined && !Array.isArray(body.customEdges)) {
-    return res.status(400).json({ message: "customEdges must be an array" });
-  }
-  if (body.entityOverrides !== undefined && (typeof body.entityOverrides !== "object" || body.entityOverrides === null || Array.isArray(body.entityOverrides))) {
-    return res.status(400).json({ message: "entityOverrides must be an object" });
-  }
-  if (body.appSettings !== undefined && (typeof body.appSettings !== "object" || body.appSettings === null || Array.isArray(body.appSettings))) {
-    return res.status(400).json({ message: "appSettings must be an object" });
+  const result = ImportSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ message: "Invalid import data", errors: result.error.issues.slice(0, 5) });
   }
 
+  const body = result.data;
   const db = getDB();
   const imported: Record<string, number> = {};
 
-  // Replace customNodes
-  if (body.customNodes !== undefined) {
+  if (body.customNodes) {
     db.customNodes = body.customNodes;
     imported.customNodes = body.customNodes.length;
   }
-
-  // Replace customEdges
-  if (body.customEdges !== undefined) {
+  if (body.customEdges) {
     db.customEdges = body.customEdges;
     imported.customEdges = body.customEdges.length;
   }
-
-  // Replace entityOverrides
-  if (body.entityOverrides !== undefined) {
+  if (body.entityOverrides) {
     db.entityOverrides = body.entityOverrides;
     imported.entityOverrides = Object.keys(body.entityOverrides).length;
   }
-
-  // Replace appSettings
-  if (body.appSettings !== undefined) {
+  if (body.appSettings) {
     db.appSettings = body.appSettings;
     imported.appSettings = 1;
   }
 
   save();
-
   res.json({ imported });
 });
 

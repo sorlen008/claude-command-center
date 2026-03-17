@@ -54,7 +54,16 @@ export function useRescan() {
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries();
+      // Invalidate data queries (not settings/update)
+      qc.invalidateQueries({ queryKey: ["/api/entities"] });
+      qc.invalidateQueries({ queryKey: ["/api/scanner/status"] });
+      qc.invalidateQueries({ queryKey: ["/api/projects"] });
+      qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+      qc.invalidateQueries({ queryKey: ["/api/graph"] });
+      qc.invalidateQueries({ queryKey: ["/api/apis"] });
+      qc.invalidateQueries({ queryKey: ["/api/live"] });
+      qc.invalidateQueries({ queryKey: ["/api/stats"] });
+      qc.invalidateQueries({ queryKey: ["/api/markdown"] });
     },
   });
 }

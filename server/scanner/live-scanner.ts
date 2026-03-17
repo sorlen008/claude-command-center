@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { CLAUDE_DIR, dirExists, safeReadJson, readHead, extractText } from "./utils";
+import { CLAUDE_DIR, dirExists, safeReadJson, readHead, extractText, normPath } from "./utils";
 import { getCachedExecutions } from "./agent-scanner";
 import { getCachedSessions } from "./session-scanner";
 import type { LiveData, ActiveSession } from "@shared/types";
@@ -28,7 +28,7 @@ function getSessionStatus(sessionFile: string, nowMs: number): ActiveSession["st
 /** Read permission mode from ~/.claude/settings.json */
 function getPermissionMode(): ActiveSession["permissionMode"] {
   try {
-    const settingsPath = path.join(CLAUDE_DIR, "settings.json").replace(/\\/g, "/");
+    const settingsPath = normPath(CLAUDE_DIR, "settings.json");
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     const allow = settings?.permissions?.allow;
     if (Array.isArray(allow)) {
@@ -45,7 +45,7 @@ function getPermissionMode(): ActiveSession["permissionMode"] {
 function getGitBranch(cwd: string): string | undefined {
   if (!cwd) return undefined;
   try {
-    const headPath = path.join(cwd, ".git", "HEAD").replace(/\\/g, "/");
+    const headPath = normPath(cwd, ".git", "HEAD");
     const content = fs.readFileSync(headPath, "utf-8").trim();
     if (content.startsWith("ref: refs/heads/")) {
       return content.slice("ref: refs/heads/".length);
@@ -87,8 +87,8 @@ function findSessionFile(sessionId: string, projectsDir: string): string | null 
     const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
     for (const dir of dirs) {
       if (!dir.isDirectory()) continue;
-      const projectPath = path.join(projectsDir, dir.name).replace(/\\/g, "/");
-      const exactPath = path.join(projectPath, `${sessionId}.jsonl`).replace(/\\/g, "/");
+      const projectPath = normPath(projectsDir, dir.name);
+      const exactPath = normPath(projectPath, `${sessionId}.jsonl`);
 
       if (fs.existsSync(exactPath)) {
         // If the exact match is fresh enough, use it
@@ -116,7 +116,7 @@ function findNewestJsonl(dirPath: string): string | null {
     const files = fs.readdirSync(dirPath, { withFileTypes: true });
     for (const f of files) {
       if (!f.isFile() || !f.name.endsWith(".jsonl")) continue;
-      const full = path.join(dirPath, f.name).replace(/\\/g, "/");
+      const full = normPath(dirPath, f.name);
       try {
         const mt = fs.statSync(full).mtime.getTime();
         if (mt > newestMtime) {
@@ -264,16 +264,16 @@ function getSessionDetails(filePath: string): SessionDetails {
 export function getLiveData(): LiveData {
   const activeSessions: ActiveSession[] = [];
   const nowMs = Date.now();
-  const projectsDir = path.join(CLAUDE_DIR, "projects").replace(/\\/g, "/");
+  const projectsDir = normPath(CLAUDE_DIR, "projects");
 
   // 1. Read ~/.claude/sessions/*.json for active sessions
-  const sessionsDir = path.join(CLAUDE_DIR, "sessions").replace(/\\/g, "/");
+  const sessionsDir = normPath(CLAUDE_DIR, "sessions");
   if (dirExists(sessionsDir)) {
     try {
       const files = fs.readdirSync(sessionsDir, { withFileTypes: true });
       for (const f of files) {
         if (!f.isFile() || !f.name.endsWith(".json")) continue;
-        const filePath = path.join(sessionsDir, f.name).replace(/\\/g, "/");
+        const filePath = normPath(sessionsDir, f.name);
         const data = safeReadJson(filePath);
         if (!data || !data.sessionId) continue;
 
@@ -292,13 +292,13 @@ export function getLiveData(): LiveData {
             for (const projDir of projDirs) {
               if (!projDir.isDirectory()) continue;
               // Check subagents directly in the project dir
-              const subagentsPath = path.join(projectsDir, projDir.name, "subagents").replace(/\\/g, "/");
+              const subagentsPath = normPath(projectsDir, projDir.name, "subagents");
               findActiveAgents(subagentsPath, session, nowMs);
 
               // Check subagents inside session subdirectories
-              const sessionSubDir = path.join(projectsDir, projDir.name, data.sessionId).replace(/\\/g, "/");
+              const sessionSubDir = normPath(projectsDir, projDir.name, data.sessionId);
               if (dirExists(sessionSubDir)) {
-                const subPath = path.join(sessionSubDir, "subagents").replace(/\\/g, "/");
+                const subPath = normPath(sessionSubDir, "subagents");
                 findActiveAgents(subPath, session, nowMs);
               }
             }
@@ -390,7 +390,7 @@ function findActiveAgents(subagentsPath: string, session: ActiveSession, nowMs: 
     const files = fs.readdirSync(subagentsPath, { withFileTypes: true });
     for (const f of files) {
       if (!f.isFile() || !f.name.endsWith(".jsonl") || !f.name.startsWith("agent-")) continue;
-      const filePath = path.join(subagentsPath, f.name).replace(/\\/g, "/");
+      const filePath = normPath(subagentsPath, f.name);
       try {
         const stat = fs.statSync(filePath);
         const mtimeMs = stat.mtime.getTime();

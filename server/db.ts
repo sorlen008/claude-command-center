@@ -75,7 +75,15 @@ try {
     data = defaultData();
   }
 } catch (err) {
-  console.error("[db] Failed to load database, starting fresh:", (err as Error).message);
+  console.error("[db] Failed to load database:", (err as Error).message);
+  // If the file exists but can't be parsed, create a backup instead of overwriting
+  if (fs.existsSync(dbPath)) {
+    const backupPath = dbPath + ".corrupt." + Date.now();
+    try {
+      fs.copyFileSync(dbPath, backupPath);
+      console.warn(`[db] Corrupted DB backed up to: ${backupPath}`);
+    } catch {}
+  }
   data = defaultData();
 }
 

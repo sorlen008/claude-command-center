@@ -1,5 +1,5 @@
 import type { Entity, CustomNode, CustomEdge } from "@shared/types";
-import { entityId, getFileStat, CLAUDE_DIR, HOME, now, dirExists, fileExists, safeReadText, discoverProjectDirs, decodeProjectKey, getExtraPaths } from "./utils";
+import { entityId, getFileStat, CLAUDE_DIR, HOME, now, dirExists, fileExists, safeReadText, discoverProjectDirs, decodeProjectKey, getExtraPaths, normPath } from "./utils";
 import path from "path";
 import fs from "fs";
 
@@ -108,7 +108,7 @@ export function scanProjects(): Entity[] {
 
 // Find Claude Code session data for a project directory
 function getSessionInfo(projectDir: string): { sessionCount: number; sessionSize: number; hasMemory: boolean } {
-  const projectsDir = path.join(CLAUDE_DIR, "projects").replace(/\\/g, "/");
+  const projectsDir = normPath(CLAUDE_DIR, "projects");
   if (!dirExists(projectsDir)) return { sessionCount: 0, sessionSize: 0, hasMemory: false };
 
   const homeNorm = HOME.replace(/\\/g, "/");
@@ -119,7 +119,7 @@ function getSessionInfo(projectDir: string): { sessionCount: number; sessionSize
       if (!dir.isDirectory()) continue;
       const decoded = decodeProjectKey(dir.name);
       if (decoded === projectDir || (decoded === homeNorm && projectDir.startsWith(homeNorm))) {
-        const claudeDir = path.join(projectsDir, dir.name).replace(/\\/g, "/");
+        const claudeDir = normPath(projectsDir, dir.name);
         let sessionCount = 0;
         let sessionSize = 0;
         try {
@@ -158,7 +158,7 @@ export function scanEnvServices(): { nodes: CustomNode[]; edges: CustomEdge[] } 
   const projectDirs = discoverProjectDirs();
 
   for (const dir of projectDirs) {
-    const envPath = path.join(dir, ".env").replace(/\\/g, "/");
+    const envPath = normPath(dir, ".env");
     if (!fileExists(envPath)) continue;
 
     try {
@@ -241,7 +241,7 @@ export function scanGitRemotes(projects: Entity[]): CustomEdge[] {
   const remoteToProjects = new Map<string, string[]>();
 
   for (const project of projects) {
-    const gitConfigPath = path.join(project.path, ".git", "config").replace(/\\/g, "/");
+    const gitConfigPath = normPath(project.path, ".git", "config");
     if (!fileExists(gitConfigPath)) continue;
 
     try {

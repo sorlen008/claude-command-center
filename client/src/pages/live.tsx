@@ -17,6 +17,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import type { ActiveSession, AgentExecution } from "@shared/types";
+import { relativeTime as _relativeTime } from "@/lib/utils";
 
 const REFETCH_MS = 3000;
 
@@ -42,14 +43,7 @@ function shortModel(model: string | null): string {
 
 function relativeTime(dateStr: string | null): string {
   if (!dateStr) return "-";
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return _relativeTime(dateStr);
 }
 
 function runningDuration(startedAt: number, _tick?: number): string {

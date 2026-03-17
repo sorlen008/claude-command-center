@@ -4,11 +4,23 @@ import type { ApiDefinition } from "@shared/types";
 
 const router = Router();
 
+// Cache scan result for 60s to avoid re-parsing YAML on every request
+let cachedApis: ApiDefinition[] | null = null;
+let cacheTime = 0;
+const CACHE_TTL = 60_000;
+
+function getApis(): ApiDefinition[] {
+  if (cachedApis && Date.now() - cacheTime < CACHE_TTL) return cachedApis;
+  const { apis } = scanApiConfig();
+  cachedApis = apis;
+  cacheTime = Date.now();
+  return apis;
+}
+
 /** GET /api/apis — All API definitions from apis-config.yaml */
 router.get("/api/apis", (_req: Request, res: Response) => {
   try {
-    const { apis } = scanApiConfig();
-    res.json(apis);
+    res.json(getApis());
   } catch (err) {
     res.status(500).json({ message: "Failed to scan API config" });
   }
@@ -17,7 +29,7 @@ router.get("/api/apis", (_req: Request, res: Response) => {
 /** GET /api/apis/stats — Category and status counts */
 router.get("/api/apis/stats", (_req: Request, res: Response) => {
   try {
-    const { apis } = scanApiConfig();
+    const apis = getApis();
     const byCategory: Record<string, number> = {};
     const byStatus: Record<string, number> = {};
     const byAuth: Record<string, number> = {};
