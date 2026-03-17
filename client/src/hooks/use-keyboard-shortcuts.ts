@@ -24,7 +24,16 @@ export function useKeyboardShortcuts() {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if ((e.target as HTMLElement)?.isContentEditable) return;
 
-      const key = e.key.toLowerCase();
+      const key = e.key;
+
+      // ? key toggles the keyboard shortcuts overlay
+      if (key === "?" || (e.shiftKey && key === "/")) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("toggle-shortcuts-overlay"));
+        return;
+      }
+
+      const lowerKey = key.toLowerCase();
 
       if (pendingRef.current) {
         // Second key in the sequence
@@ -33,7 +42,7 @@ export function useKeyboardShortcuts() {
           clearTimeout(timerRef.current);
           timerRef.current = null;
         }
-        const path = shortcuts[key];
+        const path = shortcuts[lowerKey];
         if (path) {
           e.preventDefault();
           setLocation(path);
@@ -41,7 +50,7 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      if (key === "g" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (lowerKey === "g" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // First key: start the sequence
         pendingRef.current = true;
         timerRef.current = setTimeout(() => {

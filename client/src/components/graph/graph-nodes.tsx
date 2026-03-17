@@ -38,7 +38,7 @@ function ProjectNodeComponent({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div
-      className="graph-node"
+      className="graph-node graph-node-enter"
       style={{
         borderTop: `3px solid ${color}`,
         boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
@@ -86,7 +86,7 @@ function EntityNodeComponent({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div
-      className="graph-node"
+      className="graph-node graph-node-enter"
       style={{
         borderLeft: `3px solid ${color}`,
         boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
@@ -113,7 +113,7 @@ function SessionNodeComponent({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div
-      className="graph-node"
+      className="graph-node graph-node-enter"
       style={{
         borderLeft: `3px solid ${color}`,
         boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
@@ -138,7 +138,7 @@ function CustomNodeComponent({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div
-      className="graph-node"
+      className="graph-node graph-node-enter"
       style={{
         borderLeft: `3px solid ${color}`,
         boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,

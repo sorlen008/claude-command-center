@@ -33,6 +33,7 @@ import {
   Check,
   Info,
 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { formatBytes, relativeTime, shortModel, getTypeColor } from "@/lib/utils";
 import type { AgentDefinition, AgentExecution } from "@shared/types";
 
@@ -200,7 +201,7 @@ function DefinitionsTab() {
       </div>
 
       {groups.length === 0 ? (
-        <div className="text-muted-foreground text-center py-12">No agent definitions found</div>
+        <EmptyState icon={Bot} title="No agent definitions found" description="Create a custom agent to get started" />
       ) : (
         <div className="space-y-6">
           {groups.map(group => {
@@ -447,7 +448,7 @@ function HistoryTab() {
       </div>
 
       {!executions || executions.length === 0 ? (
-        <div className="text-muted-foreground text-center py-12">No agent executions found</div>
+        <EmptyState icon={Bot} title="No agent executions found" description="Agents will appear here when Claude Code spawns subagents" />
       ) : (
         <div className="space-y-2">
           {executions.map((exec, i) => (

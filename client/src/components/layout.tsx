@@ -130,7 +130,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Brand */}
         <div className={cn("flex items-center gap-2.5 h-14", collapsed ? "px-3 justify-center" : "px-4")}>
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(99,102,241,0.3)] ring-1 ring-blue-400/20">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(99,102,241,0.3)] ring-1 ring-blue-400/20 brand-glow">
             <Terminal className="h-4 w-4 text-white" />
           </div>
           {!collapsed && (
@@ -202,7 +202,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           {isActive && (
                             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-blue-400 to-purple-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]" />
                           )}
-                          <item.icon className={cn("h-4 w-4 flex-shrink-0", isActive && "text-blue-400")} />
+                          <item.icon className={cn("h-4 w-4 flex-shrink-0 transition-all duration-150", isActive && "text-blue-400", !isActive && "group-hover:scale-110 group-hover:text-blue-400/70")} />
                           {!collapsed && (
                             <>
                               <span className="flex-1">{item.label}</span>

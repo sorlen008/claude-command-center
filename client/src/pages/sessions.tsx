@@ -15,6 +15,31 @@ import {
 } from "lucide-react";
 import type { SessionData } from "@shared/types";
 import { formatBytes, relativeTime as _relativeTime } from "@/lib/utils";
+import { EmptyState } from "@/components/empty-state";
+
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function HighlightText({ text, query }: { text: string; query: string }) {
+  if (!query || !text) return <>{text}</>;
+  try {
+    const parts = text.split(new RegExp(`(${escapeRegex(query)})`, "gi"));
+    return (
+      <>
+        {parts.map((part, i) =>
+          part.toLowerCase() === query.toLowerCase() ? (
+            <mark key={i}>{part}</mark>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  } catch {
+    return <>{text}</>;
+  }
+}
 
 function relativeTime(dateStr: string | null): string {
   if (!dateStr) return "-";
@@ -242,7 +267,7 @@ export default function Sessions() {
       {isLoading ? (
         <ListSkeleton rows={6} />
       ) : sessions.length === 0 ? (
-        <div className="text-muted-foreground text-center py-12">No sessions found</div>
+        <EmptyState icon={MessageSquare} title="No sessions found" description="Try adjusting your search or filters" />
       ) : (
         <div className="space-y-2">
           {sessions.map((s, i) => (
@@ -260,6 +285,7 @@ export default function Sessions() {
               onCopyResume={handleCopyResume}
               onOpenFolder={handleOpenFolder}
               onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
+              searchQuery={search}
             />
           ))}
         </div>
@@ -306,6 +332,7 @@ function SessionCard({
   onCopyResume,
   onOpenFolder,
   onDelete,
+  searchQuery,
 }: {
   session: SessionData;
   index: number;
@@ -319,6 +346,7 @@ function SessionCard({
   onCopyResume: (id: string, e: React.MouseEvent) => void;
   onOpenFolder: (filePath: string, e: React.MouseEvent) => void;
   onDelete: (id: string, e: React.MouseEvent) => void;
+  searchQuery?: string;
 }) {
   const resumeCopied = copiedId === "resume:" + s.id;
 
@@ -353,7 +381,7 @@ function SessionCard({
           <div className="flex-1 min-w-0">
             {/* First message as title */}
             {s.firstMessage ? (
-              <p className="text-sm font-medium line-clamp-1">{s.firstMessage}</p>
+              <p className="text-sm font-medium line-clamp-1"><HighlightText text={s.firstMessage} query={searchQuery || ""} /></p>
             ) : (
               <p className="text-sm text-muted-foreground/50 italic">(empty session)</p>
             )}
@@ -365,7 +393,7 @@ function SessionCard({
               {s.slug && (
                 <>
                   <span className="text-muted-foreground/30 text-[11px]">/</span>
-                  <span className="text-[11px] text-muted-foreground/60 font-mono truncate max-w-[180px]">{s.slug}</span>
+                  <span className="text-[11px] text-muted-foreground/60 font-mono truncate max-w-[180px]"><HighlightText text={s.slug} query={searchQuery || ""} /></span>
                 </>
               )}
               {s.tags.length > 0 && (

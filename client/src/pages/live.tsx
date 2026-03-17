@@ -16,6 +16,7 @@ import {
   Check,
   GitBranch,
 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import type { ActiveSession, AgentExecution } from "@shared/types";
 import { relativeTime as _relativeTime, shortModel, getTypeColor } from "@/lib/utils";
 
@@ -222,10 +223,8 @@ export default function Live() {
         <div className="lg:col-span-2 space-y-4">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Sessions</h2>
           {activeSessions.length === 0 ? (
-            <div className="rounded-xl border bg-card p-8 text-center">
-              <Monitor className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">No active Claude sessions</p>
-              <p className="text-xs text-muted-foreground/50 mt-1">Sessions will appear here when Claude Code is running</p>
+            <div className="rounded-xl border bg-card">
+              <EmptyState icon={Monitor} title="No active Claude sessions" description="Sessions will appear here when Claude Code is running" />
             </div>
           ) : (
             <div className="space-y-3">
@@ -248,9 +247,8 @@ export default function Live() {
         <div className="space-y-4">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Recent Activity</h2>
           {recentActivity.length === 0 ? (
-            <div className="rounded-xl border bg-card p-6 text-center">
-              <Activity className="h-6 w-6 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">No agents in the past hour</p>
+            <div className="rounded-xl border bg-card">
+              <EmptyState icon={Activity} title="No agents in the past hour" />
             </div>
           ) : (
             <div className="space-y-2 max-h-[600px] overflow-auto">
@@ -423,14 +421,16 @@ function ActiveSessionCard({
 
             {/* Context usage */}
             {session.contextUsage && (
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex items-center gap-2" title={`${session.contextUsage.tokensUsed.toLocaleString()} / ${session.contextUsage.maxTokens.toLocaleString()} tokens (${session.contextUsage.percentage}%)`}>
                 <span className="text-[10px] text-muted-foreground/60 shrink-0 w-12">Context</span>
                 <div className="flex-1 h-2 rounded-full bg-muted/50 overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-all duration-500"
+                    className="h-full rounded-full context-bar-fill"
                     style={{
                       width: `${Math.min(session.contextUsage.percentage, 100)}%`,
-                      backgroundColor: session.contextUsage.percentage > 80 ? "#ef4444" : session.contextUsage.percentage > 50 ? "#f59e0b" : "#22c55e",
+                      background: `linear-gradient(90deg, #22c55e, #f59e0b 60%, #ef4444)`,
+                      backgroundSize: "200% 100%",
+                      backgroundPosition: `${Math.min(session.contextUsage.percentage, 100)}% 0`,
                     }}
                   />
                 </div>

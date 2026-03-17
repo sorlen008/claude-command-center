@@ -306,24 +306,24 @@ export default function GraphPage() {
   // Generate a <style> tag for hover dimming — pure CSS, zero re-renders
   const hoverStyleTag = useMemo(() => {
     if (connectedIds) {
-      // Dim everything, then un-dim connected nodes/edges
+      // Dim everything, then un-dim connected nodes/edges with glow
       const nodeSelectors = Array.from(connectedIds.nodeIds).map((id) => `.react-flow__node[data-id="${id}"] .graph-node`).join(",\n");
       const edgeSelectors = Array.from(connectedIds.edgeIds).map((id) => `.react-flow__edge[data-id="${id}"] path`).join(",\n");
       return `
-        .react-flow__node .graph-node { opacity: 0.15; }
-        .react-flow__edge path { opacity: 0.06; }
-        ${nodeSelectors} { opacity: 1; }
-        ${edgeSelectors ? `${edgeSelectors} { opacity: 1; filter: drop-shadow(0 0 3px currentColor); }` : ""}
+        .react-flow__node .graph-node { opacity: 0.15; transition: opacity 0.2s ease, box-shadow 0.2s ease; }
+        .react-flow__edge path { opacity: 0.06; transition: opacity 0.2s ease; }
+        ${nodeSelectors} { opacity: 1; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.1), 0 0 16px rgba(59,130,246,0.15); }
+        ${edgeSelectors ? `${edgeSelectors} { opacity: 1; filter: drop-shadow(0 0 6px currentColor); stroke-dashoffset: 0; animation: edge-flow 1s linear infinite; }` : ""}
       `;
     }
     if (selectedNode && pathNodeIds.size > 1) {
       const nodeSelectors = Array.from(pathNodeIds).map((id) => `.react-flow__node[data-id="${id}"] .graph-node`).join(",\n");
       const edgeSelectors = Array.from(pathEdgeIds).map((id) => `.react-flow__edge[data-id="${id}"] path`).join(",\n");
       return `
-        .react-flow__node .graph-node { opacity: 0.15; }
-        .react-flow__edge path { opacity: 0.06; }
-        ${nodeSelectors} { opacity: 1; }
-        ${edgeSelectors ? `${edgeSelectors} { opacity: 1; filter: drop-shadow(0 0 3px currentColor); }` : ""}
+        .react-flow__node .graph-node { opacity: 0.15; transition: opacity 0.2s ease; }
+        .react-flow__edge path { opacity: 0.06; transition: opacity 0.2s ease; }
+        ${nodeSelectors} { opacity: 1; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.1), 0 0 12px rgba(59,130,246,0.12); }
+        ${edgeSelectors ? `${edgeSelectors} { opacity: 1; filter: drop-shadow(0 0 6px currentColor); stroke-dashoffset: 0; animation: edge-flow 1s linear infinite; }` : ""}
       `;
     }
     return null;
@@ -534,6 +534,11 @@ export default function GraphPage() {
       </div>
 
       <div className="flex-1 relative" style={{ minHeight: 400 }}>
+        {/* Floating background elements */}
+        <div className="floating-bg-circle" style={{ width: 300, height: 300, top: "10%", left: "5%", animationDelay: "0s" }} />
+        <div className="floating-bg-circle" style={{ width: 200, height: 200, top: "60%", right: "10%", animationDelay: "2s" }} />
+        <div className="floating-bg-circle" style={{ width: 250, height: 250, top: "30%", right: "25%", animationDelay: "4s" }} />
+
         {isLoading ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <div className="flex flex-col items-center gap-3">

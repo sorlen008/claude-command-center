@@ -3,6 +3,7 @@ import type { EntityType } from "@shared/types";
 import { entityConfig } from "@/components/entity-badge";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { useCountUp } from "@/hooks/use-count-up";
 
 const entityHex: Record<EntityType, string> = {
   project: "#3b82f6",
@@ -26,6 +27,7 @@ export function StatCard({ type, count, subtitle, onClick, trend, trendValue }: 
   const config = entityConfig[type];
   const Icon = config.icon;
   const hex = entityHex[type];
+  const animatedCount = useCountUp(count);
 
   return (
     <Card
@@ -48,7 +50,7 @@ export function StatCard({ type, count, subtitle, onClick, trend, trendValue }: 
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{config.label}s</p>
-            <p className="text-3xl font-bold mt-1 tabular-nums">{count}</p>
+            <p className="text-3xl font-bold mt-1 tabular-nums">{Math.round(animatedCount)}</p>
             {subtitle && <p className="text-[10px] text-muted-foreground mt-0.5">{subtitle}</p>}
             {trend && trendValue && (
               <div className={cn(

@@ -10,6 +10,7 @@ import { useAppSettings } from "@/hooks/use-settings";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useTheme } from "@/hooks/use-theme";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
+import { KeyboardShortcutsOverlay } from "@/components/keyboard-shortcuts";
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Projects = lazy(() => import("@/pages/projects"));
 const ProjectDetail = lazy(() => import("@/pages/project-detail"));
@@ -35,8 +36,8 @@ import NotFound from "@/pages/not-found";
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center h-screen">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted-foreground border-t-transparent" />
+    <div className="flex items-center justify-center h-screen animate-fade-in-up">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-blue-500" />
     </div>
   );
 }
@@ -94,6 +95,7 @@ export default function App() {
       <TooltipProvider>
         <Router />
         <GlobalSearch />
+        <KeyboardShortcutsOverlay />
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -79,9 +79,9 @@ export default function Dashboard() {
           size="sm"
           onClick={() => rescan.mutate()}
           disabled={rescan.isPending}
-          className="gap-2 border-blue-500/30 hover:bg-blue-500/10 hover:border-blue-500/50 hover:shadow-glow"
+          className="gap-2 border-blue-500/30 hover:bg-blue-500/10 hover:border-blue-500/50 hover:shadow-glow transition-all"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${rescan.isPending ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-3.5 w-3.5 transition-transform ${rescan.isPending ? "animate-spin" : ""}`} />
           {rescan.isPending ? "Scanning..." : "Rescan"}
         </Button>
       </div>
@@ -153,8 +153,8 @@ export default function Dashboard() {
                 }}
                 className="flex items-center gap-2.5 rounded-lg border border-border/50 px-3 py-3 text-xs hover:bg-accent/50 hover:scale-[1.02] transition-all text-left group gradient-border"
               >
-                <div className={`rounded-lg p-1.5 ${action.bg}`}>
-                  <action.icon className={`h-3.5 w-3.5 ${action.color}`} />
+                <div className={`rounded-lg p-1.5 ${action.bg} transition-transform group-hover:scale-110`}>
+                  <action.icon className={`h-3.5 w-3.5 ${action.color} transition-transform group-hover:-translate-y-0.5`} />
                 </div>
                 <div className="min-w-0">
                   <span className="font-medium block">{action.label}</span>
@@ -220,23 +220,50 @@ export default function Dashboard() {
           <CardContent className="space-y-2 text-sm">
             {runtime ? (
               <>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Cpu className="h-3 w-3" /> Node
+                    <div className="rounded-md bg-muted/30 p-1"><Cpu className="h-3 w-3" /></div> Node
                   </span>
                   <span className="font-mono text-xs">{runtime.nodeVersion}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <HardDrive className="h-3 w-3" /> Platform
+                    <div className="rounded-md bg-muted/30 p-1"><HardDrive className="h-3 w-3" /></div> Platform
                   </span>
                   <span className="font-mono text-xs">{runtime.platform}/{runtime.arch}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Database className="h-3 w-3" /> Memory
+                    <div className="rounded-md bg-muted/30 p-1"><Database className="h-3 w-3" /></div> Memory
                   </span>
-                  <span className="font-mono text-xs">{Math.round((runtime.memoryUsage?.rss || 0) / 1048576)} MB</span>
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const rss = runtime.memoryUsage?.rss || 0;
+                      const rssMB = Math.round(rss / 1048576);
+                      const ceiling = 512; // MB — reasonable ceiling for Node process
+                      const pct = Math.min(Math.round((rssMB / ceiling) * 100), 100);
+                      const circumference = 2 * Math.PI * 13;
+                      const color = pct > 80 ? "#ef4444" : pct > 50 ? "#f59e0b" : "#22c55e";
+                      return (
+                        <div className="flex items-center gap-2" title={`${rssMB} MB RSS / ${ceiling} MB ceiling`}>
+                          <svg className="h-8 w-8" viewBox="0 0 36 36">
+                            <circle cx="18" cy="18" r="13" fill="none" stroke="hsl(var(--muted) / 0.5)" strokeWidth="2.5" />
+                            <circle
+                              cx="18" cy="18" r="13" fill="none"
+                              stroke={color} strokeWidth="2.5"
+                              strokeDasharray={circumference}
+                              strokeDashoffset={circumference - (circumference * pct / 100)}
+                              strokeLinecap="round"
+                              className="memory-ring-track"
+                              transform="rotate(-90 18 18)"
+                            />
+                            <text x="18" y="19.5" textAnchor="middle" className="fill-foreground text-[7px] font-mono font-bold">{rssMB}</text>
+                          </svg>
+                          <span className="font-mono text-xs">{rssMB} MB</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               </>
             ) : (
@@ -261,20 +288,23 @@ export default function Dashboard() {
       </div>
 
       {/* Keyboard Shortcuts Hint */}
-      <div className="flex items-center gap-3 px-4 py-2 rounded-lg border border-border/30 bg-card/30">
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("toggle-shortcuts-overlay"))}
+        className="flex items-center gap-3 px-4 py-2 rounded-lg border border-border/30 bg-card/30 hover:bg-card/50 transition-colors w-full text-left"
+      >
         <Keyboard className="h-3.5 w-3.5 text-muted-foreground/50" />
         <span className="text-[11px] text-muted-foreground/50">
+          Press <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">?</kbd> for all keyboard shortcuts
+          <span className="mx-2 text-border">|</span>
           <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">Ctrl+K</kbd> search
           <span className="mx-2 text-border">|</span>
           <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">G</kbd> then
-          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">D</kbd>ashboard
-          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">S</kbd>essions
-          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">G</kbd>raph
-          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">L</kbd>ive
-          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">A</kbd>gents
-          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">M</kbd>cps
+          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">D</kbd> /
+          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">S</kbd> /
+          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">G</kbd> /
+          <kbd className="px-1 py-0.5 rounded border border-border/50 text-[10px] font-mono">L</kbd> navigate
         </span>
-      </div>
+      </button>
 
       {/* Recent Changes */}
       <Card>
