@@ -17,10 +17,6 @@
 
 A local dashboard for visualizing and managing your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) ecosystem. Auto-discovers your projects, MCP servers, skills, plugins, sessions, agents, and their relationships with zero configuration.
 
-<p align="center">
-  <img src="docs/demo.gif" alt="Claude Command Center Demo" width="800">
-</p>
-
 <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="100%" />
 
 <details>
