@@ -2,12 +2,13 @@
 
 # Claude Command Center
 
-**A bird's-eye view of your entire Claude Code setup.**
+**See everything Claude Code knows — projects, MCP servers, sessions, costs — in one dashboard.**
 
 [![CI](https://github.com/sorlen008/claude-command-center/actions/workflows/ci.yml/badge.svg)](https://github.com/sorlen008/claude-command-center/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript)](https://www.typescriptlang.org)
+[![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code%202.x-blueviolet?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJ3aGl0ZSI+PHBhdGggZD0iTTEyIDJMMyAyMGgyMEwxMiAyeiIvPjwvc3ZnPg==)](https://docs.anthropic.com/en/docs/claude-code)
 
 [Setup Guide](SETUP.md) | [Security](SECURITY.md) | [Contributing](CONTRIBUTING.md) | [Changelog](CHANGELOG.md)
 
@@ -16,6 +17,14 @@
 ---
 
 A local dashboard for visualizing and managing your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) ecosystem. Auto-discovers your projects, MCP servers, skills, plugins, sessions, agents, and their relationships with zero configuration.
+
+### Why?
+
+- **"How much am I spending on Claude Code?"** -- Cost analytics by session, project, model, and day. See exactly where your tokens go.
+- **"Which MCP servers are configured where?"** -- Auto-discovers every `.mcp.json` across all projects. One view, zero setup.
+- **"I had a session last week that fixed this exact bug..."** -- Deep search across all session content. Find any conversation by what was said, not just the title.
+- **"What was I working on yesterday?"** -- Continuation intelligence detects unfinished work and generates context prompts to resume instantly.
+- **"I have 300+ sessions eating disk space."** -- Stale detection, bulk delete, and health scores help you clean up.
 
 <p align="center">
   <img src="docs/demo.gif" alt="Claude Command Center Demo" width="800">
