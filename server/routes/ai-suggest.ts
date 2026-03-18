@@ -132,7 +132,7 @@ ${context}
 
 RULES — follow these strictly:
 1. DO NOT suggest nodes that duplicate existing entities or custom nodes. Check the lists above carefully.
-   - If a project entity already represents something (e.g. "Findash Docker" is the Findash dashboard), do NOT create a separate "Findash Dashboard" node.
+   - If a project entity already represents something (e.g. "My App Docker" is the app), do NOT create a duplicate node for the same thing.
    - These names already exist and must NOT be duplicated: ${existingNames.slice(0, 50).join(", ")}
 2. DO NOT suggest edges that already exist in the relationships or custom edges sections above.
 3. Only suggest infrastructure/services that are clearly referenced in the data (CLAUDE.md, env vars, MCP configs).

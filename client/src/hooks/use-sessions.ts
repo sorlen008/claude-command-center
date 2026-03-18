@@ -6,6 +6,8 @@ import type {
   SessionCostData, CommitLink, ContextLoaderResult,
   ProjectDashboardResult, SessionDiffsResult, PromptTemplate, WeeklyDigest, WorkflowConfig,
   SessionNote, FileTimelineResult, NLQueryResult,
+  ContinuationBrief, Decision, BashKnowledgeBase, BashSearchResult,
+  NerveCenterData, DelegationResult,
 } from "@shared/types";
 
 export function useSessions(params?: { q?: string; sort?: string; order?: string; hideEmpty?: boolean; activeOnly?: boolean; project?: string }) {
@@ -315,6 +317,63 @@ export function useNLQuery() {
     mutationFn: async (question: string) => {
       const res = await apiRequest("POST", "/api/sessions/nl-query", { question });
       return res.json() as Promise<NLQueryResult>;
+    },
+  });
+}
+
+export function useContinuations() {
+  return useQuery<ContinuationBrief>({
+    queryKey: ["/api/sessions/continuations"],
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useDecisions(query?: string) {
+  const qs = query ? `?q=${encodeURIComponent(query)}` : "";
+  return useQuery<Decision[]>({
+    queryKey: [`/api/sessions/decisions${qs}`],
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useExtractDecisions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/sessions/decisions/extract/${id}`);
+      return res.json() as Promise<{ decisions: Decision[]; count: number }>;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sessions/decisions"] }); },
+  });
+}
+
+export function useBashKnowledge() {
+  return useQuery<BashKnowledgeBase>({
+    queryKey: ["/api/sessions/analytics/bash"],
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useBashSearch(query: string) {
+  return useQuery<BashSearchResult>({
+    queryKey: [`/api/sessions/analytics/bash/search?q=${encodeURIComponent(query)}`],
+    enabled: query.length >= 2,
+  });
+}
+
+export function useNerveCenter() {
+  return useQuery<NerveCenterData>({
+    queryKey: ["/api/sessions/nerve-center"],
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+  });
+}
+
+export function useDelegate() {
+  return useMutation({
+    mutationFn: async (params: { sessionId: string; target: string; task?: string }) => {
+      const res = await apiRequest("POST", "/api/sessions/delegate", params);
+      return res.json() as Promise<DelegationResult>;
     },
   });
 }

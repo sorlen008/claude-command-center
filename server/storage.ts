@@ -1,5 +1,5 @@
 import { getDB, save } from "./db";
-import type { Entity, EntityType, Relationship, MarkdownBackup, ScanStatus, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary, PromptTemplate, WorkflowConfig, SessionNote } from "@shared/types";
+import type { Entity, EntityType, Relationship, MarkdownBackup, ScanStatus, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary, PromptTemplate, WorkflowConfig, SessionNote, Decision } from "@shared/types";
 import { getCachedStats } from "./scanner/session-scanner";
 import { getCachedAgentStats } from "./scanner/agent-scanner";
 
@@ -307,6 +307,27 @@ export class Storage {
     const db = getDB();
     delete db.sessionNotes[sessionId];
     save();
+  }
+
+  // Decisions
+  getDecisions(): Decision[] {
+    return getDB().decisions;
+  }
+
+  addDecision(decision: Decision): void {
+    const db = getDB();
+    db.decisions.push(decision);
+    save();
+  }
+
+  searchDecisions(query: string): Decision[] {
+    const q = query.toLowerCase();
+    return getDB().decisions.filter(d =>
+      d.topic.toLowerCase().includes(q) ||
+      d.chosen.toLowerCase().includes(q) ||
+      d.tradeOffs.toLowerCase().includes(q) ||
+      d.tags.some(t => t.toLowerCase().includes(q))
+    );
   }
 
   // Pinned Sessions

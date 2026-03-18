@@ -28,7 +28,7 @@ export const MCP_CATALOG: Record<string, MCPCatalogEntry> = {
     website: "https://context7.com",
   },
   "findash": {
-    description: "Read-only access to the Findash personal finance database (PostgreSQL)",
+    description: "Read-only access to a personal finance database (PostgreSQL)",
     category: "data",
     capabilities: [
       "Query financial overview, KPIs, and net worth",
@@ -68,7 +68,7 @@ export const MCP_CATALOG: Record<string, MCPCatalogEntry> = {
     ],
   },
   "playwright": {
-    description: "Browser automation via Playwright, connects to Brave CDP session",
+    description: "Browser automation via Playwright, connects via Chrome DevTools Protocol",
     category: "browser",
     capabilities: [
       "Navigate pages, click elements, fill forms",

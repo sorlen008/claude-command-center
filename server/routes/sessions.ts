@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -17,10 +17,27 @@ import { generateWeeklyDigest } from "../scanner/weekly-digest";
 import { runAutoWorkflows } from "../scanner/auto-workflows";
 import { getFileTimeline } from "../scanner/file-timeline";
 import { runNLQuery } from "../scanner/nl-query";
+import { getContinuationBrief } from "../scanner/continuation-detector";
+import { extractDecisions } from "../scanner/decision-extractor";
+import { getBashKnowledgeBase, searchBashCommands } from "../scanner/bash-knowledge";
+import { getNerveCenterData } from "../scanner/nerve-center";
+import { delegateToTerminal, delegateToTelegram, delegateToVoice, buildContextPrompt } from "../scanner/session-delegation";
 import { storage } from "../storage";
 import crypto from "crypto";
 
 const router = Router();
+
+/** Check if claude CLI is available */
+function isClaudeAvailable(): boolean {
+  try {
+    const env = { ...process.env };
+    delete (env as Record<string, string | undefined>).CLAUDECODE;
+    execSync("claude --version", { env, stdio: "pipe", timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function ensureTrashDir(): void {
   if (!fs.existsSync(TRASH_DIR)) fs.mkdirSync(TRASH_DIR, { recursive: true });
@@ -204,6 +221,7 @@ router.get("/api/sessions/search", async (req: Request, res: Response) => {
 
 /** POST /api/sessions/summarize-batch — Summarize up to 10 unsummarized sessions */
 router.post("/api/sessions/summarize-batch", async (_req: Request, res: Response) => {
+  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for AI summarization" });
   try {
     const sessions = getCachedSessions();
     const result = await summarizeBatch(sessions, 10);
@@ -375,6 +393,7 @@ router.get("/api/sessions/file-timeline", (req: Request, res: Response) => {
 
 /** POST /api/sessions/nl-query — Natural language query */
 router.post("/api/sessions/nl-query", async (req: Request, res: Response) => {
+  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for natural language queries" });
   const question = (req.body as { question?: string })?.question;
   if (!question || question.length < 3) return res.status(400).json({ message: "question is required (min 3 chars)" });
   try {
@@ -384,6 +403,92 @@ router.post("/api/sessions/nl-query", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ message: (err as Error).message });
   }
+});
+
+/** GET /api/sessions/continuations — Unfinished work that needs attention */
+router.get("/api/sessions/continuations", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(getContinuationBrief(sessions));
+});
+
+/** GET /api/sessions/decisions — List all decisions */
+router.get("/api/sessions/decisions", (req: Request, res: Response) => {
+  const q = qstr(req.query.q);
+  if (q) {
+    res.json(storage.searchDecisions(q));
+  } else {
+    res.json(storage.getDecisions());
+  }
+});
+
+/** POST /api/sessions/decisions/extract/:id — Extract decisions from a session */
+router.post("/api/sessions/decisions/extract/:id", async (req: Request, res: Response) => {
+  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for decision extraction" });
+  const idResult = SessionIdSchema.safeParse(String(req.params.id));
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+  const session = getCachedSessions().find(s => s.id === idResult.data);
+  if (!session) return res.status(404).json({ message: "Session not found" });
+  try {
+    const decisions = await extractDecisions(session);
+    res.json({ decisions, count: decisions.length });
+  } catch (err) {
+    res.status(500).json({ message: (err as Error).message });
+  }
+});
+
+/** GET /api/sessions/analytics/bash — Bash command knowledge base */
+router.get("/api/sessions/analytics/bash", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(getBashKnowledgeBase(sessions));
+});
+
+/** GET /api/sessions/analytics/bash/search — Search bash commands */
+router.get("/api/sessions/analytics/bash/search", (req: Request, res: Response) => {
+  const q = qstr(req.query.q);
+  if (!q) return res.status(400).json({ message: "q parameter required" });
+  const sessions = getCachedSessions();
+  res.json(searchBashCommands(sessions, q));
+});
+
+/** GET /api/sessions/nerve-center — Operations nerve center */
+router.get("/api/sessions/nerve-center", async (_req: Request, res: Response) => {
+  try {
+    const sessions = getCachedSessions();
+    res.json(await getNerveCenterData(sessions));
+  } catch (err) {
+    res.status(500).json({ message: (err as Error).message });
+  }
+});
+
+/** POST /api/sessions/delegate — Delegate session to terminal/telegram/voice */
+router.post("/api/sessions/delegate", async (req: Request, res: Response) => {
+  const body = req.body as { sessionId?: string; target?: string; task?: string };
+  if (!body.sessionId || !body.target) return res.status(400).json({ message: "sessionId and target required" });
+  const idResult = SessionIdSchema.safeParse(body.sessionId);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID" });
+  const session = getCachedSessions().find(s => s.id === idResult.data);
+  if (!session) return res.status(404).json({ message: "Session not found" });
+
+  const task = (body.task || "").slice(0, 500);
+
+  if (body.target === "terminal") {
+    res.json(delegateToTerminal(session));
+  } else if (body.target === "telegram") {
+    res.json(await delegateToTelegram(session, task));
+  } else if (body.target === "voice") {
+    res.json(delegateToVoice(session, task));
+  } else {
+    res.status(400).json({ message: "target must be terminal, telegram, or voice" });
+  }
+});
+
+/** GET /api/sessions/:id/context — Build context prompt for delegation */
+router.get("/api/sessions/:id/context", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+  const session = getCachedSessions().find(s => s.id === idResult.data);
+  if (!session) return res.status(404).json({ message: "Session not found" });
+  res.json({ prompt: buildContextPrompt(session) });
 });
 
 /** GET /api/sessions/:id — Session detail with message timeline */
@@ -612,6 +717,7 @@ router.get("/api/sessions/:id/summary", (req: Request, res: Response) => {
 
 /** POST /api/sessions/:id/summarize — Generate summary for a session */
 router.post("/api/sessions/:id/summarize", async (req: Request, res: Response) => {
+  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for AI summarization" });
   const idResult = SessionIdSchema.safeParse(req.params.id);
   if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
 

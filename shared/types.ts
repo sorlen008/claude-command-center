@@ -576,6 +576,88 @@ export interface NLQueryResult {
   durationMs: number;
 }
 
+// --- Continuation Intelligence ---
+export interface ContinuationItem {
+  sessionId: string;
+  firstMessage: string;
+  lastTs: string;
+  outcome: string;
+  summary?: string;
+  gitBranch?: string;
+  uncommittedFiles?: number;
+  lastFiles: string[];
+  score: number;
+}
+
+export interface ContinuationBrief {
+  items: ContinuationItem[];
+  generatedAt: string;
+}
+
+// --- Decision Log ---
+export interface Decision {
+  id: string;
+  sessionId: string;
+  timestamp: string;
+  topic: string;
+  alternatives: string[];
+  chosen: string;
+  tradeOffs: string;
+  project: string;
+  tags: string[];
+}
+
+// --- Bash Knowledge Base ---
+export interface BashCommand {
+  command: string;
+  description: string;
+  category: string;
+  succeeded: boolean;
+  errorOutput?: string;
+  timestamp: string;
+  sessionId: string;
+  projectKey: string;
+}
+
+export interface BashKnowledgeBase {
+  uniqueCommands: number;
+  totalExecutions: number;
+  byCategory: Record<string, { count: number; successRate: number }>;
+  frequentCommands: Array<{ command: string; count: number; successRate: number; lastUsed: string }>;
+  failureHotspots: Array<{ command: string; failCount: number; lastError: string }>;
+  durationMs: number;
+}
+
+export interface BashSearchResult {
+  matches: BashCommand[];
+  totalMatches: number;
+}
+
+// --- Operations Nerve Center ---
+export interface ServiceStatus {
+  name: string;
+  port: number;
+  status: "up" | "down" | "unknown";
+  responseMs?: number;
+}
+
+export interface NerveCenterData {
+  services: ServiceStatus[];
+  costPacing: { thisWeek: number; avgWeek: number; pacingPct: number };
+  uncommittedWork: Array<{ filePath: string; sessionCount: number; editCount: number }>;
+  overnightActivity: string[];
+  attentionItems: Array<{ severity: "info" | "warning" | "critical"; message: string }>;
+  generatedAt: string;
+}
+
+// --- Session Delegation ---
+export interface DelegationResult {
+  target: "terminal" | "telegram" | "voice";
+  status: "dispatched" | "failed";
+  message: string;
+  contextPrompt?: string;
+}
+
 export interface SessionStats {
   totalCount: number;
   totalSize: number;

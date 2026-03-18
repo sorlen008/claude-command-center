@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useFileTimeline, useNLQuery } from "@/hooks/use-sessions";
+import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate } from "@/hooks/use-sessions";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
   Sparkles, Loader2, Zap, DollarSign, FileText, Activity, Archive,
   GitCommit, Clipboard, BarChart3, FolderKanban, Calendar, Settings,
   Plus, Play, BookOpen, Pin, StickyNote, MessageCircleQuestion,
+  Server, Brain, TerminalSquare, Phone, Send, ArrowRight, Lightbulb,
 } from "lucide-react";
 import type { SessionData, DeepSearchMatch } from "@shared/types";
 import { formatBytes, relativeTime as _relativeTime } from "@/lib/utils";
@@ -461,6 +462,12 @@ function AnalyticsPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Nerve Center */}
+      <NerveCenterPanel />
+
+      {/* Continuation Intelligence */}
+      <ContinuationPanel />
+
       {/* NL Query */}
       <div className="space-y-2">
         <h2 className="text-sm font-medium flex items-center gap-2">
@@ -470,7 +477,7 @@ function AnalyticsPanel() {
           <div className="relative flex-1">
             <MessageCircleQuestion className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="e.g., How much did I spend on Nicora Desk this week?"
+              placeholder="e.g., Which project costs the most? How many sessions this week?"
               value={nlQuestion}
               onChange={e => setNlQuestion(e.target.value)}
               className="pl-9"
@@ -707,7 +714,7 @@ function AnalyticsPanel() {
         </h2>
         <div className="flex items-center gap-2">
           <Input
-            placeholder="Project name (e.g. findash-docker, automation)"
+            placeholder="Project name (e.g. my-app, backend)"
             value={contextProject}
             onChange={e => setContextProject(e.target.value)}
             className="max-w-sm"
@@ -746,6 +753,206 @@ function AnalyticsPanel() {
       <WeeklyDigestPanel />
       <PromptLibraryPanel />
       <WorkflowConfigPanel />
+      <BashKnowledgePanel />
+      <DecisionLogPanel />
+    </div>
+  );
+}
+
+function NerveCenterPanel() {
+  const { data } = useNerveCenter();
+  if (!data) return null;
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium flex items-center gap-2">
+        <Server className="h-4 w-4 text-cyan-400" /> Operations Nerve Center
+        <span className="text-[11px] text-muted-foreground font-normal">(auto-refreshes every 30s)</span>
+      </h2>
+      <div className="flex gap-2 flex-wrap">
+        {data.services.map(svc => (
+          <div key={svc.name} className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border ${
+            svc.status === "up" ? "border-green-500/30 bg-green-500/5 text-green-400" : "border-red-500/30 bg-red-500/5 text-red-400"
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${svc.status === "up" ? "bg-green-500" : "bg-red-500"}`} />
+            {svc.name} :{svc.port}
+            {svc.responseMs !== undefined && <span className="text-muted-foreground/50">{svc.responseMs}ms</span>}
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border bg-card p-3 flex items-center justify-between">
+        <div>
+          <span className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">Weekly Spend Pacing</span>
+          <p className="text-lg font-bold font-mono text-green-400">{formatUsd(data.costPacing.thisWeek)}</p>
+        </div>
+        <div className="text-right">
+          <span className="text-[11px] text-muted-foreground/60">vs avg {formatUsd(data.costPacing.avgWeek)}</span>
+          <p className={`text-lg font-bold font-mono ${data.costPacing.pacingPct > 120 ? "text-red-400" : data.costPacing.pacingPct > 100 ? "text-amber-400" : "text-green-400"}`}>
+            {data.costPacing.pacingPct}%
+          </p>
+        </div>
+      </div>
+      {data.attentionItems.length > 0 && (
+        <div className="space-y-1">
+          {data.attentionItems.map((item, i) => (
+            <div key={i} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded border ${
+              item.severity === "critical" ? "border-red-500/30 bg-red-500/5 text-red-400" :
+              item.severity === "warning" ? "border-amber-500/30 bg-amber-500/5 text-amber-400" :
+              "border-blue-500/20 bg-blue-500/5 text-blue-400"
+            }`}>
+              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+              {item.message}
+            </div>
+          ))}
+        </div>
+      )}
+      {data.overnightActivity.length > 0 && (
+        <div>
+          <span className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">Recent Activity (12h)</span>
+          <div className="mt-1 space-y-0.5">
+            {data.overnightActivity.slice(0, 5).map((a, i) => (
+              <p key={i} className="text-xs text-muted-foreground">- {a}</p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContinuationPanel() {
+  const { data } = useContinuations();
+  const delegate = useDelegate();
+  if (!data || data.items.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium flex items-center gap-2">
+        <ArrowRight className="h-4 w-4 text-amber-400" /> Pick Up Where You Left Off
+      </h2>
+      <div className="space-y-2">
+        {data.items.map(item => (
+          <div key={item.sessionId} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium line-clamp-1">{item.firstMessage || "(no message)"}</p>
+                <div className="flex gap-2 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
+                  <span>{relativeTime(item.lastTs)}</span>
+                  <Badge variant="outline" className={`text-[9px] px-1 py-0 ${
+                    item.outcome === "error" ? "border-red-500/30 text-red-400" :
+                    item.outcome === "abandoned" ? "border-amber-500/30 text-amber-400" :
+                    "border-blue-500/30 text-blue-400"
+                  }`}>{item.outcome}</Badge>
+                  {item.gitBranch && <span className="font-mono">{item.gitBranch}</span>}
+                  {(item.uncommittedFiles || 0) > 0 && <span className="text-amber-400">{item.uncommittedFiles} uncommitted</span>}
+                </div>
+                {item.summary && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.summary}</p>}
+              </div>
+              <div className="flex gap-1 ml-2 flex-shrink-0">
+                <button onClick={() => delegate.mutate({ sessionId: item.sessionId, target: "terminal" })} className="p-1.5 rounded hover:bg-green-500/10" title="Resume in terminal">
+                  <TerminalSquare className="h-3.5 w-3.5 text-green-400" />
+                </button>
+                <button onClick={() => delegate.mutate({ sessionId: item.sessionId, target: "telegram", task: "Continue" })} className="p-1.5 rounded hover:bg-blue-500/10" title="Send to Telegram">
+                  <Send className="h-3.5 w-3.5 text-blue-400" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BashKnowledgePanel() {
+  const { data } = useBashKnowledge();
+  const [bashSearch, setBashSearch] = useState("");
+  if (!data) return null;
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium flex items-center gap-2">
+        <TerminalSquare className="h-4 w-4 text-green-400" /> Bash Knowledge Base
+        <span className="text-[11px] text-muted-foreground font-normal">({data.uniqueCommands} unique, {data.totalExecutions} total)</span>
+      </h2>
+      <div className="flex gap-2 flex-wrap">
+        {Object.entries(data.byCategory).sort((a, b) => b[1].count - a[1].count).map(([cat, stats]) => (
+          <div key={cat} className="text-xs px-2 py-1 rounded border border-border">
+            <span className="font-mono">{cat}</span>
+            <span className="text-muted-foreground/50 ml-1">{stats.count}x</span>
+            <span className={`ml-1 ${stats.successRate >= 90 ? "text-green-400" : stats.successRate >= 70 ? "text-amber-400" : "text-red-400"}`}>{stats.successRate}%</span>
+          </div>
+        ))}
+      </div>
+      <Input placeholder="Search commands..." value={bashSearch} onChange={e => setBashSearch(e.target.value)} className="text-xs" />
+      {bashSearch.length >= 2 && <BashSearchResults query={bashSearch} />}
+      {data.failureHotspots.length > 0 && (
+        <div className="rounded-xl border bg-card p-3">
+          <span className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">Failure Hotspots</span>
+          <div className="mt-1 space-y-1">
+            {data.failureHotspots.slice(0, 5).map((f, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <span className="text-red-400 w-8">{f.failCount}x</span>
+                <code className="font-mono text-muted-foreground truncate flex-1">{f.command.slice(0, 60)}</code>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BashSearchResults({ query }: { query: string }) {
+  const { data } = useBashSearch(query);
+  if (!data) return null;
+  return (
+    <div className="rounded-xl border bg-card p-3">
+      <span className="text-[11px] text-muted-foreground/60">{data.totalMatches} matches</span>
+      <div className="mt-1 space-y-1 max-h-40 overflow-auto">
+        {data.matches.slice(0, 15).map((m, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <Badge variant="outline" className={`text-[9px] px-1 py-0 ${m.succeeded ? "border-green-500/20 text-green-400" : "border-red-500/20 text-red-400"}`}>
+              {m.succeeded ? "OK" : "ERR"}
+            </Badge>
+            <code className="font-mono text-muted-foreground truncate flex-1">{m.command.slice(0, 80)}</code>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DecisionLogPanel() {
+  const [decisionSearch, setDecisionSearch] = useState("");
+  const { data: decisions } = useDecisions(decisionSearch || undefined);
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium flex items-center gap-2">
+        <Lightbulb className="h-4 w-4 text-yellow-400" /> Decision Log
+        <span className="text-[11px] text-muted-foreground font-normal">({decisions?.length || 0} decisions)</span>
+      </h2>
+      <Input placeholder="Search decisions..." value={decisionSearch} onChange={e => setDecisionSearch(e.target.value)} className="text-xs" />
+      {decisions && decisions.length > 0 && (
+        <div className="space-y-2 max-h-96 overflow-auto">
+          {decisions.slice(0, 20).map(d => (
+            <div key={d.id} className="rounded-xl border bg-card p-3 space-y-1">
+              <p className="text-sm font-medium">{d.topic}</p>
+              <p className="text-xs text-muted-foreground"><strong>Chosen:</strong> {d.chosen}</p>
+              {d.alternatives.length > 0 && <p className="text-xs text-muted-foreground/60">Alternatives: {d.alternatives.join(", ")}</p>}
+              {d.tradeOffs && <p className="text-xs text-muted-foreground/60">Trade-offs: {d.tradeOffs}</p>}
+              <div className="flex gap-1">
+                {d.tags.map(t => <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>)}
+                <span className="text-[10px] text-muted-foreground/40 ml-auto">{d.timestamp.slice(0, 10)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {decisions && decisions.length === 0 && !decisionSearch && (
+        <p className="text-xs text-muted-foreground">No decisions yet. Use "Extract Decisions" in expanded session cards to mine decisions from past sessions.</p>
+      )}
     </div>
   );
 }
@@ -977,6 +1184,43 @@ function WorkflowConfigPanel() {
           {(runWorkflows.data as { ran: string[]; errors: string[] }).ran.map((r: string, i: number) => <p key={i} className="text-green-400">- {r}</p>)}
           {(runWorkflows.data as { ran: string[]; errors: string[] }).errors.map((e: string, i: number) => <p key={i} className="text-red-400">- {e}</p>)}
         </div>
+      )}
+    </div>
+  );
+}
+
+function SessionActionsExtended({ sessionId }: { sessionId: string }) {
+  const delegate = useDelegate();
+  const extractDecisions = useExtractDecisions();
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[11px] text-muted-foreground/60">Delegate:</span>
+      <button onClick={() => delegate.mutate({ sessionId, target: "terminal" })} className="text-[11px] px-2 py-1 rounded border border-green-500/20 text-green-400 hover:bg-green-500/10">
+        <TerminalSquare className="h-3 w-3 inline mr-0.5" />Terminal
+      </button>
+      <button onClick={() => delegate.mutate({ sessionId, target: "telegram", task: "Continue this session" })} className="text-[11px] px-2 py-1 rounded border border-blue-500/20 text-blue-400 hover:bg-blue-500/10">
+        <Send className="h-3 w-3 inline mr-0.5" />Telegram
+      </button>
+      <button onClick={() => delegate.mutate({ sessionId, target: "voice" })} className="text-[11px] px-2 py-1 rounded border border-purple-500/20 text-purple-400 hover:bg-purple-500/10">
+        <Phone className="h-3 w-3 inline mr-0.5" />Voice
+      </button>
+      <span className="text-muted-foreground/30">|</span>
+      <button
+        onClick={() => extractDecisions.mutate(sessionId)}
+        disabled={extractDecisions.isPending}
+        className="text-[11px] px-2 py-1 rounded border border-yellow-500/20 text-yellow-400 hover:bg-yellow-500/10"
+      >
+        {extractDecisions.isPending ? <Loader2 className="h-3 w-3 inline mr-0.5 animate-spin" /> : <Lightbulb className="h-3 w-3 inline mr-0.5" />}
+        Extract Decisions
+      </button>
+      {delegate.data && (
+        <span className={`text-[11px] ${delegate.data.status === "dispatched" ? "text-green-400" : "text-red-400"}`}>
+          {delegate.data.message}
+        </span>
+      )}
+      {extractDecisions.data && (
+        <span className="text-[11px] text-yellow-400">{extractDecisions.data.count} decisions found</span>
       )}
     </div>
   );
@@ -1297,6 +1541,9 @@ function SessionCard({
                 <Trash2 className="h-3.5 w-3.5" /> Delete Session
               </Button>
             </div>
+
+            {/* Delegation + Decisions */}
+            <SessionActionsExtended sessionId={s.id} />
 
             {/* AI Summary */}
             {s.hasSummary && <SessionSummarySection sessionId={s.id} />}
