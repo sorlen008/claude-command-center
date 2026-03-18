@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader } from "@/hooks/use-sessions";
+import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows } from "@/hooks/use-sessions";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,8 @@ import {
   Search, Terminal, Trash2, Copy, Check, ChevronDown, ChevronRight,
   HardDrive, MessageSquare, Clock, Hash, X, AlertTriangle, Undo2, FolderOpen,
   Sparkles, Loader2, Zap, DollarSign, FileText, Activity, Archive,
-  GitCommit, Clipboard, BarChart3,
+  GitCommit, Clipboard, BarChart3, FolderKanban, Calendar, Settings,
+  Plus, Play, BookOpen,
 } from "lucide-react";
 import type { SessionData, DeepSearchMatch } from "@shared/types";
 import { formatBytes, relativeTime as _relativeTime } from "@/lib/utils";
@@ -684,6 +685,243 @@ function AnalyticsPanel() {
           <pre className="text-xs font-mono bg-muted/30 rounded-lg p-4 max-h-60 overflow-auto whitespace-pre-wrap text-muted-foreground">{contextPrompt}</pre>
         )}
       </div>
+
+      <ProjectDashboardPanel />
+      <WeeklyDigestPanel />
+      <PromptLibraryPanel />
+      <WorkflowConfigPanel />
+    </div>
+  );
+}
+
+function ProjectDashboardPanel() {
+  const { data } = useProjectDashboards();
+  if (!data || data.projects.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium flex items-center gap-2">
+        <FolderKanban className="h-4 w-4 text-cyan-400" /> Project Dashboards
+        <span className="text-[11px] text-muted-foreground font-normal">({data.projects.length} projects)</span>
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {data.projects.map(p => (
+          <div key={p.projectKey} className="rounded-xl border bg-card p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium font-mono truncate">{p.projectPath.split("/").pop() || p.projectKey}</span>
+              <span className="text-sm font-mono text-green-400">{formatUsd(p.totalCost)}</span>
+            </div>
+            <div className="flex gap-3 text-[11px] text-muted-foreground">
+              <span>{p.totalSessions} sessions</span>
+              <span>{p.totalMessages} msgs</span>
+              <span>{formatBytes(p.totalSize)}</span>
+            </div>
+            <div className="flex gap-1">
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-green-500/20 text-green-400">{p.healthBreakdown.good} good</Badge>
+              {p.healthBreakdown.fair > 0 && <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-500/20 text-amber-400">{p.healthBreakdown.fair} fair</Badge>}
+              {p.healthBreakdown.poor > 0 && <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-red-500/20 text-red-400">{p.healthBreakdown.poor} poor</Badge>}
+            </div>
+            {p.summaryTopics.length > 0 && (
+              <div className="flex gap-1 flex-wrap">
+                {p.summaryTopics.slice(0, 5).map(t => (
+                  <Badge key={t} variant="outline" className="text-[9px] px-1.5 py-0 border-purple-500/20 text-purple-300/70">{t}</Badge>
+                ))}
+              </div>
+            )}
+            {p.topFiles.length > 0 && (
+              <div className="text-[11px] text-muted-foreground/60">
+                Top files: {p.topFiles.map(f => `${f.fileName} (${f.touchCount}x)`).join(", ")}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WeeklyDigestPanel() {
+  const { data: digest } = useWeeklyDigest();
+  if (!digest) return null;
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium flex items-center gap-2">
+        <Calendar className="h-4 w-4 text-blue-400" /> Weekly Digest
+        <span className="text-[11px] text-muted-foreground font-normal">{digest.weekStart} to {digest.weekEnd}</span>
+      </h2>
+      <div className="rounded-xl border bg-card p-4 space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+          <div><p className="text-[11px] text-muted-foreground/60">Sessions</p><p className="text-xl font-bold font-mono">{digest.totalSessions}</p></div>
+          <div><p className="text-[11px] text-muted-foreground/60">Cost</p><p className="text-xl font-bold font-mono text-green-400">{formatUsd(digest.totalCost)}</p></div>
+          <div><p className="text-[11px] text-muted-foreground/60">Tokens</p><p className="text-xl font-bold font-mono">{formatTokens(digest.totalTokens)}</p></div>
+          <div><p className="text-[11px] text-muted-foreground/60">Health</p><p className="text-xl font-bold font-mono"><span className="text-green-400">{digest.healthSummary.good}</span>/<span className="text-amber-400">{digest.healthSummary.fair}</span>/<span className="text-red-400">{digest.healthSummary.poor}</span></p></div>
+        </div>
+        {digest.topAccomplishments.length > 0 && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">Accomplishments</p>
+            <div className="space-y-0.5">
+              {digest.topAccomplishments.slice(0, 5).map((a, i) => (
+                <p key={i} className="text-xs text-muted-foreground">- {a}</p>
+              ))}
+            </div>
+          </div>
+        )}
+        {digest.projectBreakdown.length > 0 && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">Projects</p>
+            <div className="space-y-0.5">
+              {digest.projectBreakdown.slice(0, 5).map(p => (
+                <div key={p.project} className="flex justify-between text-xs">
+                  <span className="font-mono text-muted-foreground truncate">{p.project}</span>
+                  <span className="text-muted-foreground/60">{p.sessions}s / {formatUsd(p.cost)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PromptLibraryPanel() {
+  const { data: templates } = usePromptTemplates();
+  const createPrompt = useCreatePrompt();
+  const deletePrompt = useDeletePrompt();
+  const [showForm, setShowForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPrompt, setNewPrompt] = useState("");
+  const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-indigo-400" /> Prompt Library
+          <span className="text-[11px] text-muted-foreground font-normal">({templates?.length || 0} templates)</span>
+        </h2>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowForm(!showForm)}>
+          <Plus className="h-3.5 w-3.5" /> New Template
+        </Button>
+      </div>
+
+      {showForm && (
+        <div className="rounded-xl border bg-card p-4 space-y-2">
+          <Input placeholder="Template name" value={newName} onChange={e => setNewName(e.target.value)} />
+          <textarea
+            placeholder="Prompt text..."
+            value={newPrompt}
+            onChange={e => setNewPrompt(e.target.value)}
+            className="w-full h-24 text-xs font-mono bg-muted/30 rounded-lg p-3 border border-border resize-none"
+          />
+          <div className="flex gap-2">
+            <Button size="sm" disabled={!newName || !newPrompt || createPrompt.isPending} onClick={() => {
+              createPrompt.mutate({ name: newName, prompt: newPrompt }, {
+                onSuccess: () => { setNewName(""); setNewPrompt(""); setShowForm(false); },
+              });
+            }}>Save</Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {templates && templates.length > 0 && (
+        <div className="space-y-2">
+          {templates.map(t => (
+            <div key={t.id} className="rounded-xl border bg-card p-3 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{t.name}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2 font-mono mt-0.5">{t.prompt}</p>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                <button
+                  className="p-1.5 rounded hover:bg-accent transition-colors"
+                  title="Copy prompt"
+                  onClick={() => { navigator.clipboard.writeText(t.prompt); setCopiedPromptId(t.id); setTimeout(() => setCopiedPromptId(null), 1500); }}
+                >
+                  {copiedPromptId === t.id ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
+                </button>
+                <button
+                  className="p-1.5 rounded hover:bg-red-500/10 transition-colors"
+                  title="Delete"
+                  onClick={() => deletePrompt.mutate(t.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkflowConfigPanel() {
+  const { data: config } = useWorkflowConfig();
+  const updateWorkflow = useUpdateWorkflow();
+  const runWorkflows = useRunWorkflows();
+
+  if (!config) return null;
+
+  const toggle = (key: keyof typeof config) => {
+    updateWorkflow.mutate({ [key]: !config[key] });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium flex items-center gap-2">
+          <Settings className="h-4 w-4 text-gray-400" /> Auto-Workflows
+        </h2>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => runWorkflows.mutate()} disabled={runWorkflows.isPending}>
+          {runWorkflows.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+          Run Now
+        </Button>
+      </div>
+      <div className="rounded-xl border bg-card p-4 space-y-3">
+        {([
+          { key: "autoSummarize" as const, label: "Auto-summarize new sessions", desc: "Summarize completed sessions automatically" },
+          { key: "autoArchiveStale" as const, label: "Flag stale sessions", desc: "Identify sessions older than 30 days with <5 messages" },
+          { key: "autoTagByPath" as const, label: "Auto-tag by file paths", desc: "Tag sessions based on which files were modified" },
+        ]).map(item => (
+          <div key={item.key} className="flex items-center justify-between">
+            <div>
+              <p className="text-sm">{item.label}</p>
+              <p className="text-[11px] text-muted-foreground">{item.desc}</p>
+            </div>
+            <button
+              onClick={() => toggle(item.key)}
+              className={`w-10 h-5 rounded-full transition-colors ${config[item.key] ? "bg-blue-500" : "bg-muted"}`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${config[item.key] ? "translate-x-5" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm">Daily cost alert</p>
+            <p className="text-[11px] text-muted-foreground">Notify when daily spend exceeds threshold</p>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">$</span>
+            <input
+              type="number"
+              value={config.costAlertThreshold || ""}
+              onChange={e => updateWorkflow.mutate({ costAlertThreshold: e.target.value ? Number(e.target.value) : null })}
+              placeholder="off"
+              className="w-16 text-xs font-mono px-2 py-1 rounded border border-border bg-background"
+            />
+          </div>
+        </div>
+      </div>
+      {runWorkflows.data && (
+        <div className="text-xs text-muted-foreground space-y-0.5">
+          {(runWorkflows.data as { ran: string[]; errors: string[] }).ran.map((r: string, i: number) => <p key={i} className="text-green-400">- {r}</p>)}
+          {(runWorkflows.data as { ran: string[]; errors: string[] }).errors.map((e: string, i: number) => <p key={i} className="text-red-400">- {e}</p>)}
+        </div>
+      )}
     </div>
   );
 }
@@ -936,8 +1174,9 @@ function SessionCard({
             {/* AI Summary */}
             {s.hasSummary && <SessionSummarySection sessionId={s.id} />}
 
-            {/* Cost + Commits */}
+            {/* Cost + Commits + Diffs */}
             <SessionCostCommits sessionId={s.id} />
+            <SessionDiffsViewer sessionId={s.id} />
 
             {/* Message timeline */}
             {detail?.records && detail.records.length > 0 && (
@@ -1053,6 +1292,50 @@ function SessionCostCommits({ sessionId }: { sessionId: string }) {
             ))}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function SessionDiffsViewer({ sessionId }: { sessionId: string }) {
+  const [showDiffs, setShowDiffs] = useState(false);
+  const { data } = useSessionDiffs(showDiffs ? sessionId : undefined);
+
+  return (
+    <div>
+      <button
+        onClick={() => setShowDiffs(!showDiffs)}
+        className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+      >
+        <FileText className="h-3 w-3" />
+        {showDiffs ? "Hide" : "Show"} file changes {data ? `(${data.totalDiffs})` : ""}
+      </button>
+      {showDiffs && data && data.diffs.length > 0 && (
+        <div className="mt-2 space-y-2 max-h-80 overflow-auto">
+          {data.diffs.map((d, i) => (
+            <div key={i} className="rounded border border-border/50 p-2 text-xs">
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="outline" className={`text-[9px] px-1 py-0 ${d.tool === "Write" ? "border-green-500/20 text-green-400" : "border-amber-500/20 text-amber-400"}`}>
+                  {d.tool}
+                </Badge>
+                <span className="font-mono text-muted-foreground truncate">{d.filePath.split("/").pop()}</span>
+                <span className="text-muted-foreground/40 text-[10px] ml-auto">{d.timestamp ? new Date(d.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+              </div>
+              {d.tool === "Edit" && d.oldString && d.newString && (
+                <div className="font-mono text-[11px] space-y-1">
+                  <pre className="bg-red-500/10 text-red-300 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap max-h-20">- {d.oldString.slice(0, 200)}</pre>
+                  <pre className="bg-green-500/10 text-green-300 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap max-h-20">+ {d.newString.slice(0, 200)}</pre>
+                </div>
+              )}
+              {d.tool === "Write" && d.content && (
+                <pre className="font-mono text-[11px] bg-green-500/10 text-green-300 rounded px-2 py-1 overflow-x-auto whitespace-pre-wrap max-h-20">{d.content.slice(0, 300)}</pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {showDiffs && data && data.diffs.length === 0 && (
+        <p className="text-[11px] text-muted-foreground mt-1">No file changes found in this session</p>
       )}
     </div>
   );

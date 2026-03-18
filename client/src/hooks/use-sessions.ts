@@ -4,6 +4,7 @@ import type {
   SessionData, SessionStats, SessionSummary, DeepSearchResult,
   CostAnalytics, FileHeatmapResult, HealthAnalytics, StaleAnalytics,
   SessionCostData, CommitLink, ContextLoaderResult,
+  ProjectDashboardResult, SessionDiffsResult, PromptTemplate, WeeklyDigest, WorkflowConfig,
 } from "@shared/types";
 
 export function useSessions(params?: { q?: string; sort?: string; order?: string; hideEmpty?: boolean; activeOnly?: boolean; project?: string }) {
@@ -188,6 +189,82 @@ export function useContextLoader() {
     mutationFn: async (project: string) => {
       const res = await apiRequest("POST", "/api/sessions/context-loader", { project });
       return res.json() as Promise<ContextLoaderResult>;
+    },
+  });
+}
+
+export function useProjectDashboards() {
+  return useQuery<ProjectDashboardResult>({
+    queryKey: ["/api/sessions/analytics/projects"],
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useSessionDiffs(id: string | undefined) {
+  return useQuery<SessionDiffsResult>({
+    queryKey: [`/api/sessions/${id}/diffs`],
+    enabled: !!id,
+    retry: false,
+  });
+}
+
+export function usePromptTemplates() {
+  return useQuery<PromptTemplate[]>({
+    queryKey: ["/api/sessions/prompts"],
+  });
+}
+
+export function useCreatePrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { name: string; description?: string; prompt: string; project?: string; tags?: string[] }) => {
+      const res = await apiRequest("POST", "/api/sessions/prompts", data);
+      return res.json() as Promise<PromptTemplate>;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sessions/prompts"] }); },
+  });
+}
+
+export function useDeletePrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/sessions/prompts/${id}`);
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sessions/prompts"] }); },
+  });
+}
+
+export function useWeeklyDigest() {
+  return useQuery<WeeklyDigest>({
+    queryKey: ["/api/sessions/analytics/digest"],
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useWorkflowConfig() {
+  return useQuery<WorkflowConfig>({
+    queryKey: ["/api/sessions/workflows"],
+  });
+}
+
+export function useUpdateWorkflow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: Partial<WorkflowConfig>) => {
+      const res = await apiRequest("PATCH", "/api/sessions/workflows", patch);
+      return res.json() as Promise<WorkflowConfig>;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sessions/workflows"] }); },
+  });
+}
+
+export function useRunWorkflows() {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sessions/workflows/run");
+      return res.json();
     },
   });
 }

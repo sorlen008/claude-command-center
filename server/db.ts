@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import type { Entity, Relationship, MarkdownBackup, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary } from "@shared/types";
+import type { Entity, Relationship, MarkdownBackup, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary, PromptTemplate, WorkflowConfig } from "@shared/types";
 
 const dataDir = process.env.COMMAND_CENTER_DATA
   ? path.resolve(process.env.COMMAND_CENTER_DATA)
@@ -25,6 +25,8 @@ export interface DBData {
   customEdges: CustomEdge[];
   entityOverrides: Record<string, EntityOverride>;
   sessionSummaries: Record<string, SessionSummary>;
+  promptTemplates: Record<string, PromptTemplate>;
+  workflowConfig: WorkflowConfig;
 }
 
 export const defaultAppSettings: AppSettings = {
@@ -53,6 +55,8 @@ function defaultData(): DBData {
     customEdges: [],
     entityOverrides: {},
     sessionSummaries: {},
+    promptTemplates: {},
+    workflowConfig: { autoSummarize: false, autoArchiveStale: false, costAlertThreshold: null, autoTagByPath: false },
   };
 }
 
@@ -73,6 +77,8 @@ try {
     if (!data.customEdges) data.customEdges = [];
     if (!data.entityOverrides) data.entityOverrides = {};
     if (!data.sessionSummaries) data.sessionSummaries = {};
+    if (!data.promptTemplates) data.promptTemplates = {};
+    if (!data.workflowConfig) data.workflowConfig = { autoSummarize: false, autoArchiveStale: false, costAlertThreshold: null, autoTagByPath: false };
     if (data.appSettings.onboarded === undefined) data.appSettings.onboarded = false;
   } else {
     data = defaultData();

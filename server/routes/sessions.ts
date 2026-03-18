@@ -11,7 +11,12 @@ import { deepSearch } from "../scanner/deep-search";
 import { summarizeSession, summarizeBatch } from "../scanner/session-summarizer";
 import { getCostAnalytics, getFileHeatmap, getHealthAnalytics, getSessionCost, getStaleAnalytics } from "../scanner/session-analytics";
 import { getSessionCommits } from "../scanner/commit-linker";
+import { getProjectDashboards } from "../scanner/project-dashboard";
+import { getSessionDiffs } from "../scanner/session-diffs";
+import { generateWeeklyDigest } from "../scanner/weekly-digest";
+import { runAutoWorkflows } from "../scanner/auto-workflows";
 import { storage } from "../storage";
+import crypto from "crypto";
 
 const router = Router();
 
@@ -277,6 +282,75 @@ router.post("/api/sessions/context-loader", (req: Request, res: Response) => {
   res.json({ prompt, sessionsUsed: used, tokensEstimate });
 });
 
+/** GET /api/sessions/analytics/projects — Project dashboards */
+router.get("/api/sessions/analytics/projects", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(getProjectDashboards(sessions));
+});
+
+/** GET /api/sessions/analytics/digest — Weekly digest */
+router.get("/api/sessions/analytics/digest", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  res.json(generateWeeklyDigest(sessions));
+});
+
+/** GET /api/sessions/prompts — List prompt templates */
+router.get("/api/sessions/prompts", (_req: Request, res: Response) => {
+  res.json(storage.getPromptTemplates());
+});
+
+/** POST /api/sessions/prompts — Create prompt template */
+router.post("/api/sessions/prompts", (req: Request, res: Response) => {
+  const body = req.body as { name?: string; description?: string; prompt?: string; project?: string; tags?: string[] };
+  if (!body.name || !body.prompt) return res.status(400).json({ message: "name and prompt are required" });
+
+  const template = {
+    id: crypto.randomUUID(),
+    name: body.name.slice(0, 200),
+    description: (body.description || "").slice(0, 500),
+    prompt: body.prompt.slice(0, 5000),
+    project: body.project?.slice(0, 200),
+    tags: (body.tags || []).slice(0, 10).map(t => String(t).slice(0, 50)),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    usageCount: 0,
+  };
+
+  storage.upsertPromptTemplate(template);
+  res.json(template);
+});
+
+/** DELETE /api/sessions/prompts/:id — Delete prompt template */
+router.delete("/api/sessions/prompts/:id", (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!storage.getPromptTemplate(id)) return res.status(404).json({ message: "Template not found" });
+  storage.deletePromptTemplate(id);
+  res.json({ message: "Deleted" });
+});
+
+/** GET /api/sessions/workflows — Get workflow config */
+router.get("/api/sessions/workflows", (_req: Request, res: Response) => {
+  res.json(storage.getWorkflowConfig());
+});
+
+/** PATCH /api/sessions/workflows — Update workflow config */
+router.patch("/api/sessions/workflows", (req: Request, res: Response) => {
+  const body = req.body as Partial<import("@shared/types").WorkflowConfig>;
+  const updated = storage.updateWorkflowConfig(body);
+  res.json(updated);
+});
+
+/** POST /api/sessions/workflows/run — Run auto-workflows manually */
+router.post("/api/sessions/workflows/run", async (_req: Request, res: Response) => {
+  try {
+    const sessions = getCachedSessions();
+    const result = await runAutoWorkflows(sessions);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: (err as Error).message });
+  }
+});
+
 /** GET /api/sessions/:id — Session detail with message timeline */
 router.get("/api/sessions/:id", (req: Request, res: Response) => {
   const idResult = SessionIdSchema.safeParse(req.params.id);
@@ -430,6 +504,17 @@ router.get("/api/sessions/:id/messages", (req: Request, res: Response) => {
     totalMessages,
     messages,
   });
+});
+
+/** GET /api/sessions/:id/diffs — File changes made in session */
+router.get("/api/sessions/:id/diffs", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+
+  const session = getCachedSessions().find(s => s.id === idResult.data);
+  if (!session) return res.status(404).json({ message: "Session not found" });
+
+  res.json(getSessionDiffs(session));
 });
 
 /** GET /api/sessions/:id/costs — Per-session cost breakdown */

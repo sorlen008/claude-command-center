@@ -479,6 +479,72 @@ export interface ContextLoaderResult {
   tokensEstimate: number;
 }
 
+export interface ProjectDashboard {
+  projectKey: string;
+  projectPath: string;
+  totalSessions: number;
+  totalCost: number;
+  totalTokens: number;
+  totalMessages: number;
+  totalSize: number;
+  healthBreakdown: { good: number; fair: number; poor: number };
+  topFiles: Array<{ fileName: string; touchCount: number }>;
+  recentSessions: Array<{ id: string; firstMessage: string; lastTs: string; cost: number; hasSummary: boolean }>;
+  commits: number;
+  summaryTopics: string[];
+}
+
+export interface ProjectDashboardResult {
+  projects: ProjectDashboard[];
+  durationMs: number;
+}
+
+export interface SessionDiff {
+  tool: "Write" | "Edit";
+  filePath: string;
+  timestamp: string;
+  oldString?: string;
+  newString?: string;
+  content?: string;
+}
+
+export interface SessionDiffsResult {
+  sessionId: string;
+  diffs: SessionDiff[];
+  totalDiffs: number;
+}
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  project?: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  usageCount: number;
+}
+
+export interface WeeklyDigest {
+  weekStart: string;
+  weekEnd: string;
+  totalSessions: number;
+  totalCost: number;
+  totalTokens: number;
+  projectBreakdown: Array<{ project: string; sessions: number; cost: number }>;
+  topAccomplishments: string[];
+  topFiles: Array<{ fileName: string; touchCount: number }>;
+  healthSummary: { good: number; fair: number; poor: number };
+}
+
+export interface WorkflowConfig {
+  autoSummarize: boolean;
+  autoArchiveStale: boolean;
+  costAlertThreshold: number | null;
+  autoTagByPath: boolean;
+}
+
 export interface SessionStats {
   totalCount: number;
   totalSize: number;

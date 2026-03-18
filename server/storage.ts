@@ -1,5 +1,5 @@
 import { getDB, save } from "./db";
-import type { Entity, EntityType, Relationship, MarkdownBackup, ScanStatus, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary } from "@shared/types";
+import type { Entity, EntityType, Relationship, MarkdownBackup, ScanStatus, AppSettings, CustomNode, CustomEdge, EntityOverride, SessionSummary, PromptTemplate, WorkflowConfig } from "@shared/types";
 import { getCachedStats } from "./scanner/session-scanner";
 import { getCachedAgentStats } from "./scanner/agent-scanner";
 
@@ -251,6 +251,39 @@ export class Storage {
   getUnsummarizedSessionIds(allIds: string[]): string[] {
     const summaries = getDB().sessionSummaries;
     return allIds.filter(id => !summaries[id]);
+  }
+
+  // Prompt Templates
+  getPromptTemplates(): PromptTemplate[] {
+    return Object.values(getDB().promptTemplates);
+  }
+
+  getPromptTemplate(id: string): PromptTemplate | null {
+    return getDB().promptTemplates[id] || null;
+  }
+
+  upsertPromptTemplate(template: PromptTemplate): void {
+    const db = getDB();
+    db.promptTemplates[template.id] = template;
+    save();
+  }
+
+  deletePromptTemplate(id: string): void {
+    const db = getDB();
+    delete db.promptTemplates[id];
+    save();
+  }
+
+  // Workflow Config
+  getWorkflowConfig(): WorkflowConfig {
+    return getDB().workflowConfig;
+  }
+
+  updateWorkflowConfig(patch: Partial<WorkflowConfig>): WorkflowConfig {
+    const db = getDB();
+    Object.assign(db.workflowConfig, patch);
+    save();
+    return db.workflowConfig;
   }
 
   // Stats
