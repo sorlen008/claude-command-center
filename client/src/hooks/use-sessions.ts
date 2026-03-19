@@ -39,7 +39,7 @@ export function useDeleteSession() {
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+      qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") });
     },
   });
 }
@@ -52,7 +52,7 @@ export function useBulkDeleteSessions() {
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+      qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") });
     },
   });
 }
@@ -74,7 +74,7 @@ export function useDeleteAllSessions() {
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+      qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") });
     },
   });
 }
@@ -87,7 +87,7 @@ export function useUndoDeleteSessions() {
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+      qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") });
     },
   });
 }
@@ -116,7 +116,7 @@ export function useSummarizeSession() {
       return res.json() as Promise<SessionSummary>;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+      qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") });
     },
   });
 }
@@ -129,7 +129,7 @@ export function useSummarizeBatch() {
       return res.json() as Promise<{ summarized: string[]; failed: string[]; skipped: string[] }>;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/sessions"] });
+      qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") });
     },
   });
 }
@@ -279,7 +279,9 @@ export function useTogglePin() {
       const res = await apiRequest("POST", `/api/sessions/pin/${id}`);
       return res.json() as Promise<{ sessionId: string; isPinned: boolean }>;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sessions"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") });
+    },
   });
 }
 
@@ -298,7 +300,7 @@ export function useSaveNote() {
       const res = await apiRequest("PUT", `/api/sessions/${id}/note`, { text });
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sessions"] }); },
+    onSuccess: () => { qc.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/sessions") }); },
   });
 }
 
