@@ -1,9 +1,11 @@
-import { execSync } from "child_process";
+import { exec } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(exec);
 import type { SessionData, ContinuationBrief, ContinuationItem } from "@shared/types";
 import { storage } from "../storage";
 
 /** Detect sessions that likely need continuation */
-export function getContinuationBrief(sessions: SessionData[]): ContinuationBrief {
+export async function getContinuationBrief(sessions: SessionData[]): Promise<ContinuationBrief> {
   const summaries = storage.getSummaries();
   const SEVENTY_TWO_HOURS_AGO = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
 
@@ -31,15 +33,14 @@ export function getContinuationBrief(sessions: SessionData[]): ContinuationBrief
       score += 1;
     }
 
-    // Check for uncommitted changes in cwd
+    // Check for uncommitted changes in cwd (async, non-blocking)
     let uncommittedFiles = 0;
     if (s.cwd) {
       try {
-        const status = execSync("git status --porcelain", {
-          cwd: s.cwd, encoding: "utf-8", timeout: 3000,
-          stdio: ["pipe", "pipe", "pipe"],
+        const { stdout } = await execAsync("git status --porcelain", {
+          cwd: s.cwd, timeout: 3000,
         });
-        uncommittedFiles = status.trim().split("\n").filter(l => l.trim()).length;
+        uncommittedFiles = stdout.trim().split("\n").filter((l: string) => l.trim()).length;
         if (uncommittedFiles > 0) score += 3;
       } catch {
         // Not a git repo or git not available

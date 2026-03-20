@@ -1,36 +1,8 @@
-import { spawn } from "child_process";
 import fs from "fs";
 import type { SessionData, SessionSummary } from "@shared/types";
 import { storage } from "../storage";
-
-/** Extract text content from a message content field */
-function extractMessageText(content: unknown, skipToolResults: boolean): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const textParts: string[] = [];
-    for (const item of content) {
-      if (item == null || typeof item !== "object") continue;
-      if (skipToolResults && item.type === "tool_result") continue;
-      if (item.type === "text" && typeof item.text === "string") {
-        textParts.push(item.text);
-      }
-    }
-    return textParts.join("\n");
-  }
-  return "";
-}
-
-/** Extract tool_use block names from a content array */
-function extractToolNames(content: unknown): string[] {
-  if (!Array.isArray(content)) return [];
-  const names: string[] = [];
-  for (const item of content) {
-    if (item != null && typeof item === "object" && item.type === "tool_use" && typeof item.name === "string") {
-      if (!names.includes(item.name)) names.push(item.name);
-    }
-  }
-  return names;
-}
+import { extractMessageText, extractToolNames } from "./utils";
+import { runClaude, parseClaudeJson } from "./claude-runner";
 
 /** Extract file paths from Write/Edit tool inputs */
 function extractFilePaths(content: unknown): string[] {
@@ -109,65 +81,7 @@ function extractSessionContext(filePath: string): SessionContext {
   };
 }
 
-/** Run claude -p --model haiku to generate a summary */
-function runClaude(prompt: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const env = { ...process.env } as Record<string, string | undefined>;
-    delete env.CLAUDECODE;
-
-    const child = spawn("claude", ["-p", "--model", "haiku", "--max-turns", "1", "--no-session-persistence"], {
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: true,
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
-    child.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
-
-    const timeout = setTimeout(() => {
-      child.kill();
-      reject(new Error("Claude timed out after 5 minutes"));
-    }, 5 * 60 * 1000);
-
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code !== 0) {
-        reject(new Error(`Claude exited with code ${code}: ${stderr.slice(0, 500)}`));
-      } else {
-        resolve(stdout.trim());
-      }
-    });
-
-    child.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-
-    child.stdin.write(prompt);
-    child.stdin.end();
-  });
-}
-
-/** Parse JSON from Claude output (handles markdown fences) */
-function parseClaudeJson(raw: string): Record<string, unknown> | null {
-  let cleaned = raw.trim();
-  // Remove markdown code fences if present
-  if (cleaned.startsWith("```")) {
-    const firstNewline = cleaned.indexOf("\n");
-    cleaned = cleaned.slice(firstNewline + 1);
-    const lastFence = cleaned.lastIndexOf("```");
-    if (lastFence !== -1) cleaned = cleaned.slice(0, lastFence);
-    cleaned = cleaned.trim();
-  }
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    return null;
-  }
-}
+// runClaude and parseClaudeJson imported from ./claude-runner
 
 // Concurrency limiter: max 2 concurrent Haiku calls
 let activeCount = 0;
@@ -242,8 +156,9 @@ Rules:
 
   await acquireSlot();
   try {
-    const raw = await runClaude(prompt);
-    const parsed = parseClaudeJson(raw);
+    const raw = await runClaude(prompt, { model: "haiku", timeoutMs: 5 * 60 * 1000 });
+    const rawParsed = parseClaudeJson(raw);
+    const parsed = rawParsed && !Array.isArray(rawParsed) ? rawParsed : null;
 
     if (!parsed || typeof parsed.summary !== "string") {
       throw new Error("Failed to parse Claude response as valid summary JSON");

@@ -6,6 +6,7 @@ export function useMarkdownFiles(category?: string) {
   const params = category ? `?category=${category}` : "";
   return useQuery<MarkdownEntity[]>({
     queryKey: [`/api/markdown${params}`],
+    refetchInterval: 10_000,
   });
 }
 
@@ -46,5 +47,28 @@ export function useRestoreMarkdown() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/markdown"] });
     },
+  });
+}
+
+export interface ValidationIssue {
+  type: "broken-path" | "broken-link" | "unknown-port" | "missing-section";
+  line?: number;
+  message: string;
+  value: string;
+}
+
+export interface ValidationResult {
+  validPaths: string[];
+  brokenPaths: string[];
+  ports: Array<{ port: number; line: number }>;
+  brokenLinks: string[];
+  missingSections: string[];
+  issues: ValidationIssue[];
+}
+
+export function useValidateMarkdown(id: string | undefined) {
+  return useQuery<ValidationResult>({
+    queryKey: [`/api/markdown/${id}/validate`],
+    enabled: false, // only runs on manual trigger via refetch
   });
 }

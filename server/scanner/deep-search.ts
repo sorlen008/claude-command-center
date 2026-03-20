@@ -1,22 +1,6 @@
 import fs from "fs";
 import type { SessionData, SessionSummary, DeepSearchMatch, DeepSearchResult } from "@shared/types";
-
-/** Extract text content from a message content field */
-function extractMessageText(content: unknown, skipToolResults: boolean): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const textParts: string[] = [];
-    for (const item of content) {
-      if (item == null || typeof item !== "object") continue;
-      if (skipToolResults && item.type === "tool_result") continue;
-      if (item.type === "text" && typeof item.text === "string") {
-        textParts.push(item.text);
-      }
-    }
-    return textParts.join("\n");
-  }
-  return "";
-}
+import { extractMessageText } from "./utils";
 
 /** Extract ~200 char snippet centered on the match */
 function extractSnippet(text: string, matchIndex: number, snippetLen = 200): string {

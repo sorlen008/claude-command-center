@@ -31,13 +31,16 @@ export function generateWeeklyDigest(sessions: SessionData[]): WeeklyDigest {
     existing.sessions++;
     byProject.set(key, existing);
   }
-  // Add costs from daily data
-  for (const [proj, data] of Object.entries(costs.byProject)) {
-    const existing = byProject.get(proj);
-    if (existing) {
-      existing.cost = data.cost; // approximate — uses full cost, not week-filtered
-    }
+  // Calculate weekly cost per project from daily data
+  for (const day of weekDays) {
+    // byDay doesn't have per-project breakdown, so distribute proportionally
+    // based on session count per project this week
   }
+  // Use weekly cost proportional to session count
+  const totalWeekSessions = weekSessions.length || 1;
+  byProject.forEach((data) => {
+    data.cost = Math.round(weekCost * (data.sessions / totalWeekSessions) * 10000) / 10000;
+  });
   const projectBreakdown = Array.from(byProject.entries())
     .map(([project, data]) => ({ project, ...data }))
     .sort((a, b) => b.cost - a.cost);

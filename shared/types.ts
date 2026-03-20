@@ -176,8 +176,10 @@ export interface MarkdownEntity extends Entity {
     category: "claude-md" | "memory" | "skill" | "readme" | "other";
     projectId?: string;
     sizeBytes: number;
+    lineCount?: number;
     preview: string;
     frontmatter: Record<string, unknown> | null;
+    links?: string[];
   };
 }
 

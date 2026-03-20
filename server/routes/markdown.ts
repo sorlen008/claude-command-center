@@ -4,6 +4,7 @@ import { storage } from "../storage";
 import fs from "fs";
 import path from "path";
 import { qstr, validate, validateMarkdownPath } from "./validation";
+import { validateClaudeMd } from "../scanner/claudemd-validator";
 
 const MarkdownContentSchema = z.object({
   content: z.string().max(1_000_000, "Content too large (max 1MB)"),
@@ -146,6 +147,26 @@ router.post("/api/markdown/:id/restore/:backupId", (req: Request, res: Response)
   } catch (err) {
     console.error("[markdown] Failed to restore file:", (err as Error).message);
     res.status(500).json({ message: "Could not restore file" });
+  }
+});
+
+router.get("/api/markdown/:id/validate", (req: Request, res: Response) => {
+  const entity = storage.getEntity(req.params.id as string);
+  if (!entity || entity.type !== "markdown") {
+    return res.status(404).json({ message: "Markdown file not found" });
+  }
+
+  const safePath = validateMarkdownPath(entity.path);
+  if (!safePath) {
+    return res.status(403).json({ message: "Path must be under user home directory" });
+  }
+
+  try {
+    const result = validateClaudeMd(safePath);
+    res.json(result);
+  } catch (err) {
+    console.error("[markdown] Validation failed:", (err as Error).message);
+    res.status(500).json({ message: "Validation failed" });
   }
 });
 

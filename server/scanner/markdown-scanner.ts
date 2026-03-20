@@ -48,6 +48,17 @@ export function scanMarkdown(): Entity[] {
       }
     } catch {}
 
+    // Extract markdown links to other .md files
+    const links: string[] = [];
+    const linkRegex = /\[(?:[^\]]*)\]\(([^)]+\.md)\)/g;
+    let linkMatch: RegExpExecArray | null;
+    while ((linkMatch = linkRegex.exec(content)) !== null) {
+      const target = linkMatch[1];
+      if (!target.startsWith("http://") && !target.startsWith("https://")) {
+        links.push(target);
+      }
+    }
+
     const id = entityId(`markdown:${normalized}`);
     results.push({
       id,
@@ -61,8 +72,10 @@ export function scanMarkdown(): Entity[] {
       data: {
         category,
         sizeBytes: stat.size,
+        lineCount: content.split("\n").length,
         preview: content.slice(0, 300),
         frontmatter,
+        links: links.length > 0 ? links : undefined,
       },
       scannedAt: now(),
     });

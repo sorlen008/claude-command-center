@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { getCachedSessions, getCachedStats, removeCachedSession, restoreCachedSession } from "../scanner/session-scanner";
-import { CLAUDE_DIR, decodeProjectKey, dirExists, readMessageTimeline } from "../scanner/utils";
+import { CLAUDE_DIR, decodeProjectKey, dirExists, readMessageTimeline, extractMessageText, extractToolNames } from "../scanner/utils";
 import { SessionIdSchema, SessionListSchema, IdsArraySchema, DeepSearchSchema, validate, qstr } from "./validation";
 import { TRASH_DIR, MAX_SESSIONS_RESPONSE } from "../config";
 import { deepSearch } from "../scanner/deep-search";
@@ -406,9 +406,9 @@ router.post("/api/sessions/nl-query", async (req: Request, res: Response) => {
 });
 
 /** GET /api/sessions/continuations — Unfinished work that needs attention */
-router.get("/api/sessions/continuations", (_req: Request, res: Response) => {
+router.get("/api/sessions/continuations", async (_req: Request, res: Response) => {
   const sessions = getCachedSessions();
-  res.json(getContinuationBrief(sessions));
+  res.json(await getContinuationBrief(sessions));
 });
 
 /** GET /api/sessions/decisions — List all decisions */
@@ -529,34 +529,7 @@ interface SessionMessage {
   toolNames?: string[];
 }
 
-/** Extract text content from a message content field, skipping tool_result items */
-function extractMessageText(content: unknown, skipToolResults: boolean): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const textParts: string[] = [];
-    for (const item of content) {
-      if (item == null || typeof item !== "object") continue;
-      if (skipToolResults && item.type === "tool_result") continue;
-      if (item.type === "text" && typeof item.text === "string") {
-        textParts.push(item.text);
-      }
-    }
-    return textParts.join("\n");
-  }
-  return "";
-}
-
-/** Extract tool_use block names from a content array */
-function extractToolNames(content: unknown): string[] {
-  if (!Array.isArray(content)) return [];
-  const names: string[] = [];
-  for (const item of content) {
-    if (item != null && typeof item === "object" && item.type === "tool_use" && typeof item.name === "string") {
-      names.push(item.name);
-    }
-  }
-  return names;
-}
+// extractMessageText and extractToolNames imported from ../scanner/utils
 
 /** Parse an entire session JSONL file into conversation messages */
 function parseSessionMessages(filePath: string, offset: number, limit: number): { messages: SessionMessage[]; totalMessages: number } {
@@ -753,6 +726,7 @@ router.delete("/api/sessions/:id", (req: Request, res: Response) => {
 
   const snapshot = { ...session };
   removeCachedSession(session.id);
+  storage.cleanupSessionData(session.id);
   lastDeleteBatch = [{ id: session.id, trashPath, originalPath: session.filePath, sessionSnapshot: snapshot, timestamp: Date.now() }];
   res.json({ message: "Deleted", id: session.id, canUndo: true });
 });
@@ -773,6 +747,7 @@ router.delete("/api/sessions", (req: Request, res: Response) => {
     if (trashPath) {
       batch.push({ id, trashPath, originalPath: session.filePath, sessionSnapshot: { ...session }, timestamp: Date.now() });
       removeCachedSession(id);
+      storage.cleanupSessionData(id);
       deleted.push(id);
     } else {
       failed.push(id);
@@ -796,6 +771,7 @@ router.post("/api/sessions/delete-all", (_req: Request, res: Response) => {
     if (trashPath) {
       batch.push({ id: session.id, trashPath, originalPath: session.filePath, sessionSnapshot: { ...session }, timestamp: Date.now() });
       removeCachedSession(session.id);
+      storage.cleanupSessionData(session.id);
       deleted++;
     }
   }
@@ -831,34 +807,8 @@ router.post("/api/sessions/:id/open", (req: Request, res: Response) => {
   const session = getCachedSessions().find(s => s.id === idResult.data);
   if (!session) return res.status(404).json({ message: "Session not found" });
 
-  const plat = os.platform();
-  const env = { ...process.env, CLAUDECODE: undefined };
-  const cwd = session.cwd || process.cwd();
-
-  let child;
-  if (plat === "win32") {
-    const winCwd = cwd.replace(/\//g, "\\");
-    child = spawn("cmd", ["/c", "start", "cmd", "/k", `cd /d ${winCwd} & claude --resume ${session.id}`], {
-      detached: true,
-      stdio: "ignore",
-      env,
-    });
-  } else if (plat === "darwin") {
-    child = spawn("osascript", ["-e", `tell application "Terminal" to do script "cd '${cwd}' && claude --resume ${session.id}"`], {
-      detached: true,
-      stdio: "ignore",
-      env,
-    });
-  } else {
-    child = spawn("x-terminal-emulator", ["-e", "bash", "-c", `cd '${cwd}' && claude --resume ${session.id}`], {
-      detached: true,
-      stdio: "ignore",
-      env,
-    });
-  }
-  child.on("error", () => {}); // prevent unhandled error event crash
-  child.unref();
-  res.json({ message: "Opening session", id: session.id });
+  const result = delegateToTerminal(session);
+  res.json({ message: result.message, id: session.id });
 });
 
 export default router;

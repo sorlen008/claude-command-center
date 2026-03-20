@@ -38,7 +38,8 @@ export function getFileTimeline(sessions: SessionData[], targetPath: string): Fi
             if (!input) continue;
 
             const fp = ((input.file_path || input.path || "") as string).replace(/\\/g, "/").toLowerCase();
-            if (!fp || (fp !== targetNorm && !fp.endsWith("/" + targetNorm.split("/").pop()!))) continue;
+            // Exact path match or exact filename match at end of path (with separator)
+            if (!fp || (fp !== targetNorm && !fp.endsWith("/" + targetNorm))) continue;
 
             if (toolName === "Write" || toolName === "write") {
               sessionIds.add(session.id);

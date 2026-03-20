@@ -1,20 +1,9 @@
-import { spawn } from "child_process";
 import fs from "fs";
 import crypto from "crypto";
 import type { SessionData, Decision } from "@shared/types";
 import { storage } from "../storage";
-
-/** Extract text from message content */
-function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((item: any) => item?.type === "text" && typeof item.text === "string")
-      .map((item: any) => item.text)
-      .join("\n");
-  }
-  return "";
-}
+import { extractMessageText } from "./utils";
+import { runClaude, parseClaudeJson } from "./claude-runner";
 
 /** Extract conversation context for decision mining */
 function extractConversation(filePath: string): string[] {
@@ -31,10 +20,10 @@ function extractConversation(filePath: string): string[] {
       try {
         const record = JSON.parse(trimmed);
         if (record.type === "user") {
-          const text = extractText(record.message?.content);
+          const text = extractMessageText(record.message?.content, true);
           if (text) parts.push(`USER: ${text.slice(0, 300)}`);
         } else if (record.type === "assistant") {
-          const text = extractText(record.message?.content);
+          const text = extractMessageText(record.message?.content, true);
           if (text) parts.push(`ASSISTANT: ${text.slice(0, 300)}`);
         }
       } catch {}
@@ -60,48 +49,26 @@ Return a JSON array. Each item:
 
 If no significant decisions were made, return []. Only return the JSON array, nothing else.`;
 
-  const answer = await new Promise<string>((resolve, reject) => {
-    const env = { ...process.env } as Record<string, string | undefined>;
-    delete env.CLAUDECODE;
-    const child = spawn("claude", ["-p", "--model", "haiku", "--max-turns", "1", "--no-session-persistence"], {
-      env, stdio: ["pipe", "pipe", "pipe"], shell: true,
-    });
-    let stdout = "";
-    child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-    const timeout = setTimeout(() => { child.kill(); reject(new Error("Timeout")); }, 60000);
-    child.on("close", (code) => { clearTimeout(timeout); code !== 0 ? reject(new Error(`Exit ${code}`)) : resolve(stdout.trim()); });
-    child.on("error", (err) => { clearTimeout(timeout); reject(err); });
-    child.stdin.write(prompt);
-    child.stdin.end();
-  });
-
-  // Parse response
-  let cleaned = answer.trim();
-  if (cleaned.startsWith("```")) {
-    const firstNl = cleaned.indexOf("\n");
-    cleaned = cleaned.slice(firstNl + 1);
-    const lastFence = cleaned.lastIndexOf("```");
-    if (lastFence !== -1) cleaned = cleaned.slice(0, lastFence);
-    cleaned = cleaned.trim();
-  }
+  const answer = await runClaude(prompt, { model: "haiku", timeoutMs: 60000 });
+  const parsed = parseClaudeJson(answer);
 
   try {
-    const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) return [];
 
     const decisions: Decision[] = [];
-    for (const item of parsed) {
-      if (!item.topic || typeof item.topic !== "string") continue;
+    for (const raw of parsed) {
+      const item = raw as Record<string, unknown>;
+      if (!item || typeof item.topic !== "string") continue;
       decisions.push({
         id: crypto.randomUUID(),
         sessionId: session.id,
         timestamp: session.lastTs || new Date().toISOString(),
         topic: String(item.topic).slice(0, 200),
-        alternatives: Array.isArray(item.alternatives) ? item.alternatives.map(String).slice(0, 10) : [],
+        alternatives: Array.isArray(item.alternatives) ? (item.alternatives as unknown[]).map(String).slice(0, 10) : [],
         chosen: String(item.chosen || "").slice(0, 500),
         tradeOffs: String(item.tradeOffs || "").slice(0, 500),
         project: session.projectKey,
-        tags: Array.isArray(item.tags) ? item.tags.map(String).slice(0, 10) : [],
+        tags: Array.isArray(item.tags) ? (item.tags as unknown[]).map(String).slice(0, 10) : [],
       });
     }
 

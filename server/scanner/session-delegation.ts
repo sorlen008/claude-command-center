@@ -3,18 +3,7 @@ import http from "http";
 import fs from "fs";
 import type { SessionData, DelegationResult } from "@shared/types";
 import { storage } from "../storage";
-
-/** Extract text from message content */
-function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((item: any) => item?.type === "text" && typeof item.text === "string")
-      .map((item: any) => item.text)
-      .join("\n");
-  }
-  return "";
-}
+import { extractMessageText } from "./utils";
 
 /** Build a continuation context prompt from session data */
 export function buildContextPrompt(session: SessionData): string {
@@ -53,10 +42,10 @@ export function buildContextPrompt(session: SessionData): string {
       try {
         const record = JSON.parse(line.trim());
         if (record.type === "user") {
-          const text = extractText(record.message?.content);
+          const text = extractMessageText(record.message?.content, true);
           if (text && text.length > 5) lastMsgs.push(`USER: ${text.slice(0, 200)}`);
         } else if (record.type === "assistant") {
-          const text = extractText(record.message?.content);
+          const text = extractMessageText(record.message?.content, true);
           if (text && text.length > 5) lastMsgs.push(`ASSISTANT: ${text.slice(0, 200)}`);
         }
       } catch {}
@@ -70,25 +59,34 @@ export function buildContextPrompt(session: SessionData): string {
   return parts.join("\n");
 }
 
+/** Sanitize a path for safe shell interpolation */
+function sanitizePath(p: string): string {
+  // Remove any shell metacharacters except path separators, spaces, dots, hyphens
+  return p.replace(/[^a-zA-Z0-9\s/\\:._\-]/g, "");
+}
+
 /** Delegate to terminal — opens a new terminal with claude --resume in the session's cwd (cross-platform) */
 export function delegateToTerminal(session: SessionData): DelegationResult {
   try {
     const env = { ...process.env, CLAUDECODE: undefined };
     const plat = process.platform;
-    const cwd = session.cwd || process.cwd();
+    const rawCwd = session.cwd || process.cwd();
+    const cwd = sanitizePath(rawCwd);
+    const sid = session.id.replace(/[^a-f0-9-]/gi, ""); // UUID chars only
     let child;
     if (plat === "win32") {
-      // cd to session's cwd first, then run claude --resume
       const winCwd = cwd.replace(/\//g, "\\");
-      child = spawn("cmd", ["/c", "start", "cmd", "/k", `cd /d ${winCwd} & claude --resume ${session.id}`], {
+      child = spawn("cmd", ["/c", "start", "cmd", "/k", `cd /d "${winCwd}" & claude --resume ${sid}`], {
         detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
       });
     } else if (plat === "darwin") {
-      child = spawn("osascript", ["-e", `tell application "Terminal" to do script "cd '${cwd}' && claude --resume ${session.id}"`], {
+      const safeCwd = cwd.replace(/'/g, "'\\''");
+      child = spawn("osascript", ["-e", `tell application "Terminal" to do script "cd '${safeCwd}' && claude --resume ${sid}"`], {
         detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
       });
     } else {
-      child = spawn("x-terminal-emulator", ["-e", "bash", "-c", `cd '${cwd}' && claude --resume ${session.id}`], {
+      const safeCwd = cwd.replace(/'/g, "'\\''");
+      child = spawn("x-terminal-emulator", ["-e", "bash", "-c", `cd '${safeCwd}' && claude --resume ${sid}`], {
         detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
       });
     }

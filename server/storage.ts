@@ -318,6 +318,10 @@ export class Storage {
   addDecision(decision: Decision): void {
     const db = getDB();
     db.decisions.push(decision);
+    // Cap at 500 decisions (FIFO)
+    if (db.decisions.length > 500) {
+      db.decisions = db.decisions.slice(-500);
+    }
     save();
   }
 
@@ -329,6 +333,17 @@ export class Storage {
       d.tradeOffs.toLowerCase().includes(q) ||
       d.tags.some(t => t.toLowerCase().includes(q))
     );
+  }
+
+  // Cleanup orphaned data when a session is deleted
+  cleanupSessionData(sessionId: string): void {
+    const db = getDB();
+    delete db.sessionSummaries[sessionId];
+    delete db.sessionNotes[sessionId];
+    db.decisions = db.decisions.filter(d => d.sessionId !== sessionId);
+    const pinIdx = db.pinnedSessions.indexOf(sessionId);
+    if (pinIdx >= 0) db.pinnedSessions.splice(pinIdx, 1);
+    save();
   }
 
   // Pinned Sessions

@@ -4,33 +4,10 @@ import type {
   FileHeatmapEntry, FileHeatmapResult,
   SessionHealth, HealthAnalytics, StaleAnalytics,
 } from "@shared/types";
+import { getPricing, computeCost } from "./pricing";
 
-// Model pricing: USD per million tokens
-const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number }> = {
-  "claude-opus-4-6":   { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
-  "claude-opus-4-5":   { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
-  "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
-  "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
-  "claude-haiku-4-5":  { input: 0.80, output: 4, cacheRead: 0.08, cacheCreation: 1 },
-};
-
-function getPricing(model: string) {
-  if (MODEL_PRICING[model]) return MODEL_PRICING[model];
-  // Fallback: match by substring
-  if (model.includes("opus")) return MODEL_PRICING["claude-opus-4-6"];
-  if (model.includes("sonnet")) return MODEL_PRICING["claude-sonnet-4-6"];
-  if (model.includes("haiku")) return MODEL_PRICING["claude-haiku-4-5"];
-  return MODEL_PRICING["claude-sonnet-4-6"]; // default
-}
-
-function calcCost(pricing: ReturnType<typeof getPricing>, input: number, output: number, cacheRead: number, cacheCreation: number): number {
-  return (
-    (input * pricing.input) +
-    (output * pricing.output) +
-    (cacheRead * pricing.cacheRead) +
-    (cacheCreation * pricing.cacheCreation)
-  ) / 1_000_000;
-}
+// Alias for backward compat within this file
+const calcCost = computeCost;
 
 interface RawAnalytics {
   cost: SessionCostData;

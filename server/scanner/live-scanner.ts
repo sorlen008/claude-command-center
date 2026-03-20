@@ -60,19 +60,7 @@ function getGitBranch(cwd: string): string | undefined {
   }
 }
 
-/** Max context windows by model family */
-const MODEL_MAX_TOKENS: Record<string, number> = {
-  "opus": 1000000,
-  "sonnet": 200000,
-  "haiku": 200000,
-};
-
-function getMaxTokens(model: string): number {
-  for (const [key, max] of Object.entries(MODEL_MAX_TOKENS)) {
-    if (model.includes(key)) return max;
-  }
-  return 200000; // default
-}
+import { getPricing as getModelPricingShared, getMaxTokens } from "./pricing";
 
 /** Find the session JSONL file across all project dirs.
  *  Claude Code creates a new JSONL file (with a new session ID) after context
@@ -150,18 +138,8 @@ function readTailLines(filePath: string, chunkSize = 65536): string[] {
   }
 }
 
-/** Cost per million tokens by model (USD) — input/output */
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  opus:   { input: 15, output: 75 },
-  sonnet: { input: 3, output: 15 },
-  haiku:  { input: 0.8, output: 4 },
-};
-
-function getModelPricing(model: string): { input: number; output: number } {
-  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
-    if (model.includes(key)) return pricing;
-  }
-  return MODEL_PRICING.sonnet; // default
+function getModelPricing(model: string) {
+  return getModelPricingShared(model);
 }
 
 interface SessionDetails {

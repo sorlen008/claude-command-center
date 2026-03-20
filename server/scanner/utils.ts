@@ -305,6 +305,35 @@ export function extractText(content: unknown): string {
   return "";
 }
 
+/** Extract text from message content, optionally skipping tool_result blocks */
+export function extractMessageText(content: unknown, skipToolResults = false): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const textParts: string[] = [];
+    for (const item of content) {
+      if (item == null || typeof item !== "object") continue;
+      if (skipToolResults && item.type === "tool_result") continue;
+      if (item.type === "text" && typeof item.text === "string") {
+        textParts.push(item.text);
+      }
+    }
+    return textParts.join("\n");
+  }
+  return "";
+}
+
+/** Extract tool_use block names from a content array */
+export function extractToolNames(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const names: string[] = [];
+  for (const item of content) {
+    if (item != null && typeof item === "object" && item.type === "tool_use" && typeof item.name === "string") {
+      if (!names.includes(item.name)) names.push(item.name);
+    }
+  }
+  return names;
+}
+
 /** Get extra scan paths from app settings */
 export function getExtraPaths() {
   try {

@@ -1,7 +1,7 @@
-import { spawn } from "child_process";
 import type { SessionData, NLQueryResult } from "@shared/types";
 import { getCostAnalytics, getFileHeatmap, getHealthAnalytics, getStaleAnalytics } from "./session-analytics";
 import { storage } from "../storage";
+import { runClaude } from "./claude-runner";
 
 /** Build a context string from analytics data for the LLM to answer questions */
 function buildContext(sessions: SessionData[]): string {
@@ -66,31 +66,7 @@ QUESTION: ${question}
 
 Answer concisely and directly. Use specific numbers from the data. If the data doesn't contain enough information to answer, say so. Do not make up data.`;
 
-  const answer = await new Promise<string>((resolve, reject) => {
-    const env = { ...process.env } as Record<string, string | undefined>;
-    delete env.CLAUDECODE;
-
-    const child = spawn("claude", ["-p", "--model", "haiku", "--max-turns", "1", "--no-session-persistence"], {
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: true,
-    });
-
-    let stdout = "";
-    child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
-
-    const timeout = setTimeout(() => { child.kill(); reject(new Error("Timeout")); }, 60000);
-
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code !== 0) reject(new Error(`Exit ${code}`));
-      else resolve(stdout.trim());
-    });
-    child.on("error", (err) => { clearTimeout(timeout); reject(err); });
-
-    child.stdin.write(prompt);
-    child.stdin.end();
-  });
+  const answer = await runClaude(prompt, { model: "haiku", timeoutMs: 60000 });
 
   return {
     answer,
