@@ -75,9 +75,9 @@ export function delegateToTerminal(session: SessionData): DelegationResult {
     const sid = session.id.replace(/[^a-f0-9-]/gi, ""); // UUID chars only
     let child;
     if (plat === "win32") {
-      const winCwd = cwd.replace(/\//g, "\\");
-      child = spawn("cmd", ["/c", "start", "cmd", "/k", `cd /d "${winCwd}" & claude --resume ${sid}`], {
-        detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
+      const winCwd = rawCwd.replace(/\//g, "\\");
+      child = spawn(`start "Claude" cmd /k "cd /d ${winCwd} && claude --resume ${sid}"`, [], {
+        detached: true, stdio: "ignore", shell: true, env: env as NodeJS.ProcessEnv,
       });
     } else if (plat === "darwin") {
       const safeCwd = cwd.replace(/'/g, "'\\''");
