@@ -77,46 +77,10 @@ function findSessionFile(sessionId: string, projectsDir: string): string | null 
       if (!dir.isDirectory()) continue;
       const projectPath = normPath(projectsDir, dir.name);
       const exactPath = normPath(projectPath, `${sessionId}.jsonl`);
-
-      if (fs.existsSync(exactPath)) {
-        // If the exact match is fresh enough, use it
-        try {
-          const stat = fs.statSync(exactPath);
-          if (Date.now() - stat.mtime.getTime() < 300_000) return exactPath;
-        } catch {
-          return exactPath;
-        }
-
-        // Exact match is stale — look for a newer JSONL in the same project dir
-        const newestInDir = findNewestJsonl(projectPath);
-        return newestInDir || exactPath;
-      }
+      if (fs.existsSync(exactPath)) return exactPath;
     }
   } catch {}
   return null;
-}
-
-/** Return the most recently modified .jsonl file in a directory */
-function findNewestJsonl(dirPath: string): string | null {
-  try {
-    let newest: string | null = null;
-    let newestMtime = 0;
-    const files = fs.readdirSync(dirPath, { withFileTypes: true });
-    for (const f of files) {
-      if (!f.isFile() || !f.name.endsWith(".jsonl")) continue;
-      const full = normPath(dirPath, f.name);
-      try {
-        const mt = fs.statSync(full).mtime.getTime();
-        if (mt > newestMtime) {
-          newestMtime = mt;
-          newest = full;
-        }
-      } catch {}
-    }
-    return newest;
-  } catch {
-    return null;
-  }
 }
 
 /** Read the tail of a JSONL file and return lines in reverse order */
