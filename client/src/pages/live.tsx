@@ -15,6 +15,13 @@ import {
   Terminal,
   Check,
   GitBranch,
+  HelpCircle,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  Lightbulb,
+  Zap,
+  ArrowRight,
 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import type { ActiveSession, AgentExecution } from "@shared/types";
@@ -85,10 +92,132 @@ function getStatusConfig(status?: string) {
   return STATUS_CONFIG[status || ""] || STATUS_CONFIG.stale;
 }
 
+/** Collapsible guide: Context & Session Tips */
+function SessionContextGuide({ show, onToggle }: { show: boolean; onToggle: () => void }) {
+  return (
+    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5">
+      <button onClick={onToggle} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors">
+        <HelpCircle className="h-4 w-4" />
+        Context & Session Tips
+        {show ? <ChevronDown className="h-3.5 w-3.5 ml-auto" /> : <ChevronRight className="h-3.5 w-3.5 ml-auto" />}
+      </button>
+      {show && (
+        <div className="px-4 pb-4 space-y-4 text-sm border-t border-cyan-500/10 pt-3">
+
+          {/* Context bar explained */}
+          <div>
+            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">What the context bar means</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-2">
+              The context bar shows how much of the model's memory window is used. Every message, tool result, and system instruction takes up space. When it fills up, Claude starts compressing older messages to make room.
+            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-16 h-2 rounded-full bg-muted overflow-hidden"><div className="h-full w-[25%] bg-green-500 rounded-full" /></div>
+                <span className="text-[11px] text-green-400 font-medium">0–40%</span>
+                <span className="text-[11px] text-muted-foreground">Plenty of room. Full conversation history available.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-16 h-2 rounded-full bg-muted overflow-hidden"><div className="h-full w-[60%] bg-amber-500 rounded-full" /></div>
+                <span className="text-[11px] text-amber-400 font-medium">40–70%</span>
+                <span className="text-[11px] text-muted-foreground">Getting full. Earlier tool results may be summarized.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-16 h-2 rounded-full bg-muted overflow-hidden"><div className="h-full w-[85%] bg-red-500 rounded-full" /></div>
+                <span className="text-[11px] text-red-400 font-medium">70%+</span>
+                <span className="text-[11px] text-muted-foreground">Compression active. Older messages being summarized.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* What happens during compression */}
+          <div>
+            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">What happens when context fills up</h4>
+            <ul className="text-xs text-muted-foreground space-y-1">
+              <li className="flex gap-2"><ArrowRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-amber-400" />Claude compresses earlier conversation history (you'll see "prior messages compressed" notes)</li>
+              <li className="flex gap-2"><ArrowRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-amber-400" />Tool results from early in the session get summarized or dropped</li>
+              <li className="flex gap-2"><ArrowRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-green-400" />Recent messages and system instructions (CLAUDE.md, memory) are always preserved</li>
+              <li className="flex gap-2"><ArrowRight className="h-3 w-3 mt-0.5 flex-shrink-0 text-green-400" />The session keeps working — it doesn't crash or stop</li>
+            </ul>
+          </div>
+
+          {/* When to act */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5">
+              <p className="text-amber-400 font-medium text-xs mb-1.5 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Signs to start a new session</p>
+              <ul className="text-muted-foreground text-[11px] space-y-0.5">
+                <li>Claude re-reads files it already read earlier</li>
+                <li>It forgets decisions you made together</li>
+                <li>Repeats questions you already answered</li>
+                <li>The original task is done, moving to new work</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-2.5">
+              <p className="text-green-400 font-medium text-xs mb-1.5 flex items-center gap-1"><Lightbulb className="h-3 w-3" /> When to keep going</p>
+              <ul className="text-muted-foreground text-[11px] space-y-0.5">
+                <li>Mid-task and context still coherent</li>
+                <li>Claude still references earlier work correctly</li>
+                <li>Starting fresh would lose important context</li>
+                <li>Using 1M context model (much more headroom)</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Before ending a session */}
+          <div>
+            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <Zap className="h-3 w-3 text-cyan-400" /> Before ending a high-context session
+            </h4>
+            <ol className="text-xs text-muted-foreground space-y-0.5 list-decimal list-inside">
+              <li>Commit any work in progress to git</li>
+              <li>Ask Claude to save important decisions or lessons to memory</li>
+              <li>Check that tests pass and nothing is left broken</li>
+              <li>Note the session slug so you can <code className="text-[11px] bg-muted/50 px-1 rounded">--resume</code> it later if needed</li>
+            </ol>
+          </div>
+
+          {/* Session statuses */}
+          <div>
+            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">Session statuses</h4>
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /><span className="text-green-400 font-medium">Thinking</span><span className="text-muted-foreground">— Claude is actively generating a response</span></div>
+              <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-500" /><span className="text-amber-400 font-medium">Waiting</span><span className="text-muted-foreground">— Waiting for user input or tool approval</span></div>
+              <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-muted-foreground/50" /><span className="text-muted-foreground font-medium">Idle</span><span className="text-muted-foreground">— No activity in the last 60 seconds</span></div>
+              <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-muted-foreground/20" /><span className="text-muted-foreground/60 font-medium">Stale</span><span className="text-muted-foreground">— Process exists but session file is old</span></div>
+            </div>
+          </div>
+
+          {/* Model context limits */}
+          <div>
+            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">Model context limits</h4>
+            <div className="grid grid-cols-3 gap-1.5 text-xs">
+              <div className="rounded border border-purple-500/20 bg-purple-500/5 p-2 text-center">
+                <p className="text-purple-400 font-medium">Opus</p>
+                <p className="text-lg font-bold font-mono">200k</p>
+                <p className="text-[10px] text-muted-foreground">Deep reasoning</p>
+              </div>
+              <div className="rounded border border-blue-500/20 bg-blue-500/5 p-2 text-center">
+                <p className="text-blue-400 font-medium">Sonnet</p>
+                <p className="text-lg font-bold font-mono">200k</p>
+                <p className="text-[10px] text-muted-foreground">Balanced speed/quality</p>
+              </div>
+              <div className="rounded border border-green-500/20 bg-green-500/5 p-2 text-center">
+                <p className="text-green-400 font-medium">Opus 1M</p>
+                <p className="text-lg font-bold font-mono">1000k</p>
+                <p className="text-[10px] text-muted-foreground">Extended context</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Live() {
   const { data, isLoading, dataUpdatedAt, refetch } = useLiveData();
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   const tick = useTick(1000);
   const isCompact = new URLSearchParams(window.location.search).get("compact") === "true";
   const prevSessionIdsRef = useRef<Set<string> | null>(null);
@@ -250,6 +379,9 @@ export default function Live() {
           </>
         )}
       </div>
+
+      {/* Context & Session Tips */}
+      <SessionContextGuide show={showGuide} onToggle={() => setShowGuide(!showGuide)} />
 
       {/* Main content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
