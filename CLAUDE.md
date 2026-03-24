@@ -33,6 +33,8 @@ Express.js backend + React frontend (TypeScript), served from a single process. 
 
 8. **Run `new-user-safety.test.ts` after changes.** This test automatically catches hardcoded paths, phone numbers, PII, and user-specific UI strings. If it fails, fix before committing.
 
+9. **No screenshots in git.** `docs/screenshots/` is gitignored. Screenshots contain live user data and must never be committed. Also watch for encoded path forms like `C--Users-username` (Claude project key format).
+
 ## Key Commands
 
 ```bash
@@ -99,11 +101,31 @@ When adding integrations with external services:
 
 ## Tests
 
-- **132+ unit tests** covering parsers, routes, storage, validation
+- **1350+ unit tests** covering parsers, routes, storage, validation
 - **`new-user-safety.test.ts`** — automated guardrail that scans all source files for:
-  - Hardcoded user paths
+  - Hardcoded user paths (both decoded `C:/Users/...` and encoded `C--Users-...`)
   - Phone numbers / PII
   - User-specific project names in UI
   - Missing Claude CLI pre-checks
   - Missing cross-platform support
   - Missing env var configuration for external services
+
+## Pre-commit Hook (PII Guard)
+
+A git pre-commit hook runs `new-user-safety.test.ts` before every commit. If PII is detected, the commit is blocked. This repo is **public** — any leaked data is immediately visible.
+
+The hook lives at `.git/hooks/pre-commit` (not tracked in git). If it's missing after a fresh clone, recreate it:
+
+```bash
+cat > .git/hooks/pre-commit << 'HOOK'
+#!/bin/bash
+echo "Running safety checks..."
+cd "$(git rev-parse --show-toplevel)"
+npx vitest run tests/new-user-safety.test.ts --reporter=dot 2>&1
+if [ $? -ne 0 ]; then
+  echo "BLOCKED: Safety test failed — personal data or hardcoded paths detected."
+  exit 1
+fi
+HOOK
+chmod +x .git/hooks/pre-commit
+```
