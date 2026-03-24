@@ -322,6 +322,7 @@ export interface ActiveSession {
   status?: "thinking" | "waiting" | "idle" | "stale";
   permissionMode?: "default" | "auto-accept" | "bypass";
   gitBranch?: string;
+  isPinned?: boolean;
 }
 
 export interface ActiveAgent {

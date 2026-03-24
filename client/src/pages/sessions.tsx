@@ -423,7 +423,7 @@ export default function Sessions() {
             </DialogTitle>
             <DialogDescription>
               {deleteConfirm?.type === "all"
-                ? "All session files will be moved to trash. You can undo this immediately after."
+                ? `All session files will be moved to trash${sessions.filter(s => s.isPinned).length > 0 ? ` (${sessions.filter(s => s.isPinned).length} pinned session${sessions.filter(s => s.isPinned).length !== 1 ? "s" : ""} will be kept)` : ""}. You can undo this immediately after.`
                 : "Session files will be moved to trash. You can undo this immediately after."}
             </DialogDescription>
           </DialogHeader>
@@ -1354,6 +1354,12 @@ function SessionCard({
               <span className="text-[11px] text-muted-foreground font-mono whitespace-nowrap">
                 {relativeTime(s.lastTs)}
               </span>
+              <span className="text-muted-foreground/30 text-[11px]">/</span>
+              <button
+                className="text-[10px] text-muted-foreground/40 font-mono hover:text-blue-400 transition-colors"
+                onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.id); onCopyId(s.id, e); }}
+                title="Click to copy UUID"
+              >{s.id}</button>
               {s.slug && (
                 <>
                   <span className="text-muted-foreground/30 text-[11px]">/</span>

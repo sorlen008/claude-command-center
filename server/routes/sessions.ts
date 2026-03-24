@@ -779,15 +779,21 @@ router.delete("/api/sessions", (req: Request, res: Response) => {
   res.json({ deleted, failed, canUndo: batch.length > 0 });
 });
 
-/** POST /api/sessions/delete-all — Delete all sessions (moves to trash) */
+/** POST /api/sessions/delete-all — Delete all sessions (moves to trash), skips pinned */
 router.post("/api/sessions/delete-all", (_req: Request, res: Response) => {
   const sessions = [...getCachedSessions()];
-  if (sessions.length === 0) return res.json({ deleted: 0, canUndo: false });
+  if (sessions.length === 0) return res.json({ deleted: 0, skipped: 0, canUndo: false });
 
+  const pinnedSet = new Set(storage.getPinnedSessions());
   const batch: DeleteRecord[] = [];
   let deleted = 0;
+  let skipped = 0;
 
   for (const session of sessions) {
+    if (pinnedSet.has(session.id)) {
+      skipped++;
+      continue;
+    }
     const trashPath = trashSession(session.filePath);
     if (trashPath) {
       batch.push({ id: session.id, trashPath, originalPath: session.filePath, sessionSnapshot: { ...session }, timestamp: Date.now() });
@@ -798,7 +804,7 @@ router.post("/api/sessions/delete-all", (_req: Request, res: Response) => {
   }
 
   lastDeleteBatch = batch;
-  res.json({ deleted, canUndo: batch.length > 0 });
+  res.json({ deleted, skipped, canUndo: batch.length > 0 });
 });
 
 /** POST /api/sessions/undo — Restore last deleted batch from trash */

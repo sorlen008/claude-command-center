@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLiveData } from "@/hooks/use-agents";
+import { useTogglePin } from "@/hooks/use-sessions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   Lightbulb,
   Zap,
   ArrowRight,
+  Pin,
 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import type { ActiveSession, AgentExecution } from "@shared/types";
@@ -215,6 +217,7 @@ function SessionContextGuide({ show, onToggle }: { show: boolean; onToggle: () =
 
 export default function Live() {
   const { data, isLoading, dataUpdatedAt, refetch } = useLiveData();
+  const togglePin = useTogglePin();
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
@@ -451,6 +454,7 @@ export default function Live() {
                   isNew={newSessionIds.has(session.sessionId)}
                   copiedId={copiedId}
                   onCopyResume={handleCopyResume}
+                  onTogglePin={(id) => togglePin.mutate(id)}
                 />
               ))}
             </div>
@@ -521,6 +525,7 @@ function ActiveSessionCard({
   isNew,
   copiedId,
   onCopyResume,
+  onTogglePin,
 }: {
   session: ActiveSession;
   index: number;
@@ -528,6 +533,7 @@ function ActiveSessionCard({
   isNew: boolean;
   copiedId: string | null;
   onCopyResume: (id: string) => void;
+  onTogglePin: (id: string) => void;
 }) {
   const title = session.slug || shortSummary(session.firstMessage, 5) || session.sessionId.slice(0, 12) + "...";
   const lastMsg = session.lastMessage ? shortSummary(session.lastMessage, 12) : null;
@@ -557,7 +563,16 @@ function ActiveSessionCard({
               {session.permissionMode === "auto-accept" && (
                 <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">AUTO</Badge>
               )}
-              <div className="ml-auto flex-shrink-0">
+              <div className="ml-auto flex-shrink-0 flex items-center gap-0.5">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  onClick={() => onTogglePin(session.sessionId)}
+                  title={session.isPinned ? "Unpin session" : "Pin session"}
+                >
+                  <Pin className={`h-3.5 w-3.5 ${session.isPinned ? "text-amber-400 fill-amber-400" : "text-muted-foreground"}`} />
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -593,6 +608,12 @@ function ActiveSessionCard({
             <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground flex-wrap">
               <Clock className="h-3 w-3 flex-shrink-0" />
               <span className="tabular-nums">{runningDuration(session.startedAt, tick)}</span>
+              <span className="text-muted-foreground/30">|</span>
+              <button
+                className="font-mono text-[10px] text-muted-foreground/40 hover:text-blue-400 transition-colors"
+                onClick={() => navigator.clipboard.writeText(session.sessionId)}
+                title="Click to copy UUID"
+              >{session.sessionId}</button>
               {session.contextUsage?.model && (
                 <>
                   <span className="text-muted-foreground/30">|</span>

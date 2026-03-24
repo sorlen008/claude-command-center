@@ -3,6 +3,7 @@ import fs from "fs";
 import { CLAUDE_DIR, dirExists, safeReadJson, readHead, extractText, normPath } from "./utils";
 import { getCachedExecutions } from "./agent-scanner";
 import { getCachedSessions } from "./session-scanner";
+import { storage } from "../storage";
 import type { LiveData, ActiveSession } from "@shared/types";
 
 /** Status thresholds (ms) */
@@ -256,6 +257,7 @@ export function getLiveData(): LiveData {
   const cachedSessions = getCachedSessions();
   const sessionMap = new Map(cachedSessions.map(s => [s.id, s]));
   const permissionMode = getPermissionMode();
+  const pinnedSet = new Set(storage.getPinnedSessions());
 
   for (const active of activeSessions) {
     const cached = sessionMap.get(active.sessionId);
@@ -286,6 +288,9 @@ export function getLiveData(): LiveData {
 
     // 2f. Git branch from cwd
     active.gitBranch = getGitBranch(active.cwd);
+
+    // 2g-a. Pin status
+    active.isPinned = pinnedSet.has(active.sessionId);
   }
 
   // 2g. Discover agents from sessions NOT in ~/.claude/sessions/ (orphaned/unlisted)
@@ -340,6 +345,7 @@ export function getLiveData(): LiveData {
             }
             tempSession.permissionMode = permissionMode;
             tempSession.gitBranch = getGitBranch(tempSession.cwd);
+            tempSession.isPinned = pinnedSet.has(sessionId);
             activeSessions.push(tempSession);
             knownSessionIds.add(sessionId);
           }
