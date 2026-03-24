@@ -35,8 +35,9 @@ describe("No hardcoded user-specific paths", () => {
   const sourceFiles = getSourceFiles(ROOT);
   const BANNED_PATTERNS = [
     { pattern: /C:[/\\]Users[/\\]zwin0/gi, label: "Hardcoded path C:/Users/zwin0" },
+    { pattern: /C--Users-zwin0/g, label: "Hardcoded encoded project key C--Users-zwin0" },
     { pattern: /\/Users\/hi\//g, label: "Hardcoded Mac Mini path /Users/hi/" },
-    { pattern: /100\.67\.236\.104/g, label: "Hardcoded Mac Mini Tailscale IP" },
+    { pattern: /100\.67\.236\.104/g, label: "Hardcoded Tailscale IP" },
     { pattern: /sorlen008@gmail/g, label: "Hardcoded email address" },
   ];
 
@@ -65,7 +66,7 @@ describe("No hardcoded user-specific paths", () => {
 
 describe("No hardcoded phone numbers", () => {
   const sourceFiles = getSourceFiles(ROOT);
-  // Match phone numbers like +971504141050, +18142595411 (but not in test/comment explaining the pattern)
+  // Match phone numbers like +15551234567, +442071234567 (but not in test/comment explaining the pattern)
   const PHONE_PATTERN = /[+"]\+?\d{10,15}"/g;
   const WHITELIST = ["new-user-safety.test.ts"];
 
@@ -91,10 +92,10 @@ describe("No hardcoded phone numbers", () => {
 describe("No Saeed-specific project names in user-facing UI text", () => {
   const UI_FILES = getSourceFiles(path.join(ROOT, "client", "src"));
   const BANNED_UI_STRINGS = [
-    { pattern: /Nicora Desk/g, label: "Nicora Desk (Saeed's finance app)" },
-    { pattern: /findash/gi, label: "findash (Saeed's project)" },
-    { pattern: /Cooper(?![\w])/g, label: "Cooper (Saeed's voice assistant)" },
-    { pattern: /Villa Project/g, label: "Villa Project (Saeed's construction)" },
+    { pattern: /Nicora Desk/g, label: "Nicora Desk (developer-specific project)" },
+    { pattern: /findash/gi, label: "findash (developer-specific project)" },
+    { pattern: /Cooper(?![\w])/g, label: "Cooper (developer-specific assistant)" },
+    { pattern: /Villa Project/g, label: "Villa Project (developer-specific project)" },
   ];
 
   for (const file of UI_FILES) {

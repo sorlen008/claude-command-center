@@ -430,8 +430,12 @@ function CreateFileWizard({ open, onClose, homeDir }: { open: boolean; onClose: 
     if (!fileName.trim()) return;
     const home = homeDir?.replace(/\\/g, "/") || "";
     const fn = fileName.endsWith(".md") ? fileName : fileName + ".md";
+    // Encode home dir to Claude project key: C:/Users/alice → C--Users-alice, /Users/hi → -Users-hi
+    const projectKey = home.includes(":")
+      ? home.replace(":", "--").replace(/\//g, "-")
+      : "-" + home.slice(1).replace(/\//g, "-");
     const filePath = fileType === "memory"
-      ? `${home}/.claude/projects/C--Users-zwin0/memory/${fn}`
+      ? `${home}/.claude/projects/${projectKey}/memory/${fn}`
       : `${home}/${fn}`;
     createMutation.mutate({ filePath, content }, { onSuccess: onClose });
   };

@@ -37,8 +37,8 @@ A local dashboard for visualizing and managing your [Claude Code](https://docs.a
 
 | | |
 |---|---|
-| <img src="docs/screenshots/graph.png" alt="Graph" /> | <img src="docs/screenshots/live.png" alt="Live View" /> |
-| **Graph** -- interactive ecosystem map with AI suggestions | **Live** -- real-time sessions, context usage, cost estimates |
+| <img src="docs/screenshots/graph.png" alt="Graph" /> | <img src="docs/screenshots/stats.png" alt="Analytics" /> |
+| **Graph** -- interactive ecosystem map with AI suggestions | **Analytics** -- usage stats, cost breakdown, model usage |
 | <img src="docs/screenshots/sessions.png" alt="Sessions" /> | <img src="docs/screenshots/agents.png" alt="Agents" /> |
 | **Sessions** -- search, filter, sort, bulk delete | **Agents** -- definitions and execution history |
 | <img src="docs/screenshots/mcps.png" alt="MCP Servers" /> | <img src="docs/screenshots/discovery.png" alt="Discovery" /> |

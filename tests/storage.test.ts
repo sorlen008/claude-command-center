@@ -113,35 +113,35 @@ describe("Storage", () => {
     });
 
     it("filters by query (name match)", () => {
-      storage.upsertEntity(makeEntity("e1", "project", { name: "Findash" }));
+      storage.upsertEntity(makeEntity("e1", "project", { name: "MyApp" }));
       storage.upsertEntity(makeEntity("e2", "project", { name: "Automation" }));
 
-      const results = storage.getEntities(undefined, "findash");
+      const results = storage.getEntities(undefined, "myapp");
       expect(results).toHaveLength(1);
-      expect(results[0].name).toBe("Findash");
+      expect(results[0].name).toBe("MyApp");
     });
 
     it("filters by query (description match)", () => {
       storage.upsertEntity(makeEntity("e1", "project", { description: "Finance dashboard" }));
-      storage.upsertEntity(makeEntity("e2", "project", { description: "Telegram bot" }));
+      storage.upsertEntity(makeEntity("e2", "project", { description: "Chat bot" }));
 
       const results = storage.getEntities(undefined, "finance");
       expect(results).toHaveLength(1);
     });
 
     it("filters by query (path match)", () => {
-      storage.upsertEntity(makeEntity("e1", "project", { path: "/home/user/findash" }));
+      storage.upsertEntity(makeEntity("e1", "project", { path: "/home/user/my-app" }));
       storage.upsertEntity(makeEntity("e2", "project", { path: "/home/user/automation" }));
 
-      const results = storage.getEntities(undefined, "findash");
+      const results = storage.getEntities(undefined, "my-app");
       expect(results).toHaveLength(1);
     });
 
     it("combines type and query filters", () => {
-      storage.upsertEntity(makeEntity("e1", "project", { name: "Findash" }));
-      storage.upsertEntity(makeEntity("e2", "mcp", { name: "Findash MCP" }));
+      storage.upsertEntity(makeEntity("e1", "project", { name: "MyApp" }));
+      storage.upsertEntity(makeEntity("e2", "mcp", { name: "MyApp MCP" }));
 
-      const results = storage.getEntities("mcp", "findash");
+      const results = storage.getEntities("mcp", "myapp");
       expect(results).toHaveLength(1);
       expect(results[0].type).toBe("mcp");
     });

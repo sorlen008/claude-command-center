@@ -59,11 +59,11 @@ describe("DB URL pattern matching", () => {
   });
 
   it("matches postgres:// (short form)", () => {
-    const url = "postgres://localhost:5434/findash";
+    const url = "postgres://localhost:5434/myappdb";
     const match = url.match(DB_URL_PATTERNS[1].pattern);
     expect(match).not.toBeNull();
     expect(match![2]).toBe("localhost");
-    expect(match![4]).toBe("findash");
+    expect(match![4]).toBe("myappdb");
   });
 
   it("matches MySQL URLs", () => {

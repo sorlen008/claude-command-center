@@ -28,13 +28,13 @@ export const MCP_CATALOG: Record<string, MCPCatalogEntry> = {
     website: "https://context7.com",
   },
   "findash": {
-    description: "Read-only access to a personal finance database (PostgreSQL)",
+    description: "Finance dashboard MCP with PostgreSQL database access",
     category: "data",
     capabilities: [
-      "Query financial overview, KPIs, and net worth",
+      "Query financial overview and KPIs",
       "Search transactions and spending by category",
-      "View accounts, assets, debts, and stock portfolio",
-      "Budget vs actuals, rental, payroll, and subscription data",
+      "View accounts, assets, and portfolio data",
+      "Budget tracking and subscription management",
     ],
   },
   "21st-dev": {
@@ -231,12 +231,12 @@ export const MCP_CATALOG: Record<string, MCPCatalogEntry> = {
     ],
   },
   "nicora-desk": {
-    description: "Personal finance dashboard with accounts, transactions, and analytics",
+    description: "Finance dashboard with accounts, transactions, and analytics",
     category: "data",
     capabilities: [
       "Query financial overview and KPIs",
       "Manage accounts, transactions, and budgets",
-      "Track net worth, assets, debts, and spending",
+      "Track net worth, assets, and spending",
     ],
   },
   "stitch": {
