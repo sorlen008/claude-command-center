@@ -288,6 +288,66 @@ export function getLiveData(): LiveData {
     active.gitBranch = getGitBranch(active.cwd);
   }
 
+  // 2g. Discover agents from sessions NOT in ~/.claude/sessions/ (orphaned/unlisted)
+  //     Scan all session subdirs for recently-modified agent files
+  const knownSessionIds = new Set(activeSessions.map(s => s.sessionId));
+  if (dirExists(projectsDir)) {
+    try {
+      const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true });
+      for (const projDir of projDirs) {
+        if (!projDir.isDirectory()) continue;
+        const projPath = normPath(projectsDir, projDir.name);
+        try {
+          const entries = fs.readdirSync(projPath, { withFileTypes: true });
+          for (const entry of entries) {
+            // Session subdirs are UUID-named directories
+            if (!entry.isDirectory() || !/^[0-9a-f]{8}-/.test(entry.name)) continue;
+            const sessionId = entry.name;
+            if (knownSessionIds.has(sessionId)) continue; // Already processed
+            const subagentsPath = normPath(projPath, sessionId, "subagents");
+            if (!dirExists(subagentsPath)) continue;
+
+            // Check if any agent files are recent enough
+            const tempSession: ActiveSession = {
+              pid: 0,
+              sessionId,
+              cwd: "",
+              startedAt: 0,
+              activeAgents: [],
+            };
+            findActiveAgents(subagentsPath, tempSession, nowMs);
+            if (tempSession.activeAgents.length === 0) continue;
+
+            // Found active agents — create a session entry for them
+            const cached = sessionMap.get(sessionId);
+            if (cached) {
+              tempSession.firstMessage = cached.firstMessage;
+              tempSession.slug = cached.slug;
+              tempSession.projectKey = cached.projectKey;
+              tempSession.cwd = (cached.cwd || "").replace(/\\/g, "/");
+            }
+            const sessionFile = findSessionFile(sessionId, projectsDir);
+            if (sessionFile) {
+              const details = getSessionDetails(sessionFile);
+              tempSession.contextUsage = details.contextUsage;
+              tempSession.lastMessage = details.lastMessage;
+              tempSession.messageCount = details.messageCount;
+              tempSession.sizeBytes = details.sizeBytes;
+              tempSession.costEstimate = details.costEstimate;
+              tempSession.status = getSessionStatus(sessionFile, nowMs);
+            } else {
+              tempSession.status = "stale";
+            }
+            tempSession.permissionMode = permissionMode;
+            tempSession.gitBranch = getGitBranch(tempSession.cwd);
+            activeSessions.push(tempSession);
+            knownSessionIds.add(sessionId);
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
   // 3. Get recent activity from cached executions
   const oneHourAgo = new Date(nowMs - 3600000).toISOString();
   const recentActivity = getCachedExecutions()

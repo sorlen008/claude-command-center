@@ -221,6 +221,60 @@ export const MCP_CATALOG: Record<string, MCPCatalogEntry> = {
       "Create, update, and respond to events",
     ],
   },
+  "browsermcp": {
+    description: "Browser automation and web interaction via Chrome DevTools Protocol",
+    category: "browser",
+    capabilities: [
+      "Navigate web pages and take screenshots",
+      "Click, type, and interact with page elements",
+      "Read page content and console logs",
+    ],
+  },
+  "nicora-desk": {
+    description: "Personal finance dashboard with accounts, transactions, and analytics",
+    category: "data",
+    capabilities: [
+      "Query financial overview and KPIs",
+      "Manage accounts, transactions, and budgets",
+      "Track net worth, assets, debts, and spending",
+    ],
+  },
+  "stitch": {
+    description: "Google Stitch AI-powered UI generation from text prompts",
+    category: "ai",
+    capabilities: [
+      "Generate full HTML pages from text descriptions",
+      "Edit and refine existing screen designs",
+      "Create design variants with controlled creativity",
+    ],
+    website: "https://developers.google.com/stitch",
+  },
+  "discord": {
+    description: "Discord messaging platform integration",
+    category: "integration",
+    capabilities: [
+      "Send and read Discord messages",
+      "Manage channels and servers",
+      "Interact with Discord communities",
+    ],
+  },
+  "telegram": {
+    description: "Telegram messaging platform integration",
+    category: "integration",
+    capabilities: [
+      "Send and read Telegram messages",
+      "Manage bot interactions and commands",
+      "Access chat history and media",
+    ],
+  },
+  "fakechat": {
+    description: "Mock chat server for testing and development",
+    category: "dev-tools",
+    capabilities: [
+      "Simulate chat interactions for testing",
+      "Provide mock responses for development",
+    ],
+  },
 };
 
 export const PLUGIN_CATALOG: Record<string, PluginCatalogEntry> = {

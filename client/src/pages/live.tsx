@@ -218,6 +218,7 @@ export default function Live() {
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [showAgents, setShowAgents] = useState(false);
   const tick = useTick(1000);
   const isCompact = new URLSearchParams(window.location.search).get("compact") === "true";
   const prevSessionIdsRef = useRef<Set<string> | null>(null);
@@ -269,6 +270,11 @@ export default function Live() {
   const stats = data?.stats;
   const recentActivity = data?.recentActivity || [];
   const hasActive = (stats?.activeSessionCount ?? 0) > 0;
+
+  // Collect all agents across all sessions for the dropdown
+  const allAgents = activeSessions.flatMap(session =>
+    session.activeAgents.map(agent => ({ agent, session }))
+  );
 
   // Compact overlay mode: /live?compact=true
   if (isCompact) {
@@ -345,12 +351,54 @@ export default function Live() {
           )}
         </div>
         <div className="w-px h-5 bg-border" />
-        <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm">
-            <span className="font-mono font-bold">{stats?.activeAgentCount ?? 0}</span>
-            <span className="text-muted-foreground ml-1">agent{(stats?.activeAgentCount ?? 0) !== 1 ? "s" : ""}</span>
-          </span>
+        <div className="relative">
+          <button
+            className="flex items-center gap-2 hover:bg-accent/30 -mx-1 px-1 rounded transition-colors"
+            onClick={() => setShowAgents(!showAgents)}
+          >
+            <Bot className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm">
+              <span className="font-mono font-bold">{stats?.activeAgentCount ?? 0}</span>
+              <span className="text-muted-foreground ml-1">agent{(stats?.activeAgentCount ?? 0) !== 1 ? "s" : ""}</span>
+            </span>
+            {allAgents.length > 0 && (
+              <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${showAgents ? "rotate-180" : ""}`} />
+            )}
+          </button>
+          {showAgents && allAgents.length > 0 && (
+            <div className="absolute top-full left-0 mt-2 w-80 rounded-xl border bg-card shadow-lg z-50 p-3 space-y-2 animate-fade-in-up">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium px-1">
+                Active Agents ({allAgents.length})
+              </div>
+              {allAgents.map(({ agent, session }) => (
+                <div key={agent.agentId} className={`rounded-lg border px-3 py-2 ${agent.status === "running" ? "border-green-500/20 bg-green-500/5" : "border-border/30 bg-muted/20"}`}>
+                  <div className="flex items-center gap-2">
+                    {agent.status === "running" ? (
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse drop-shadow-[0_0_4px_rgba(34,197,94,0.5)]" />
+                    ) : (
+                      <span className="w-2 h-2 rounded-full bg-muted-foreground/30" />
+                    )}
+                    <span className="text-xs font-medium truncate">{agent.slug || agent.agentId.slice(0, 10)}</span>
+                    {agent.agentType && (
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${getTypeColor(agent.agentType)}`}>
+                        {agent.agentType}
+                      </Badge>
+                    )}
+                  </div>
+                  {agent.task && (
+                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 ml-4">{agent.task}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1 ml-4 text-[10px] text-muted-foreground/50">
+                    {agent.model && <span>{shortModel(agent.model)}</span>}
+                    {session.slug && <><span className="text-muted-foreground/20">|</span><span>{session.slug}</span></>}
+                    {!session.slug && session.cwd && <><span className="text-muted-foreground/20">|</span><span className="font-mono">{session.cwd.split("/").pop()}</span></>}
+                    <span className="text-muted-foreground/20">|</span>
+                    <span>{relativeTime(agent.lastWriteTs)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="w-px h-5 bg-border" />
         <div className="flex items-center gap-2">
