@@ -269,6 +269,7 @@ export function getLiveData(): LiveData {
 
     // 2c. Extract context usage, last message, message count, size, cost from session JSONL
     const sessionFile = findSessionFile(active.sessionId, projectsDir);
+    active.hasHistory = !!sessionFile;
     if (sessionFile) {
       const details = getSessionDetails(sessionFile);
       active.contextUsage = details.contextUsage;

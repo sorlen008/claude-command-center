@@ -323,6 +323,7 @@ export interface ActiveSession {
   permissionMode?: "default" | "auto-accept" | "bypass";
   gitBranch?: string;
   isPinned?: boolean;
+  hasHistory?: boolean;  // true if a matching JSONL session file exists
 }
 
 export interface ActiveAgent {
