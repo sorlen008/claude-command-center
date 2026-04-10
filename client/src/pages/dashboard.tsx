@@ -11,8 +11,9 @@ import {
   RefreshCw, Clock, HardDrive, Cpu, Activity, Database,
   FolderOpen, Server, Wand2, FileText, GitBranch, Search,
   ExternalLink, BarChart3, Zap, CheckCircle2, AlertCircle, Loader2,
-  Radio, Terminal, Keyboard, Download,
+  Radio, Terminal, Keyboard, Download, Gauge,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useLiveData } from "@/hooks/use-agents";
 import { MoodPlayerButton } from "@/components/mood-player";
 import type { EntityType } from "@shared/types";
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const { data: projects } = useProjects();
   const rescan = useRescan();
   const { data: liveData } = useLiveData();
+  const { data: costData } = useQuery<any>({ queryKey: ["/api/analytics/costs"], staleTime: 300_000 });
 
   const counts = (status?.entityCounts || {}) as Record<string, number>;
   const activeSessions = liveData?.stats?.activeSessionCount || 0;
@@ -129,6 +131,99 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* Usage Overview */}
+      {costData && (
+        <Card className="animate-fade-in-up">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-blue-400" />
+              Usage
+              <button onClick={() => setLocation("/stats")} className="ml-auto text-[10px] text-muted-foreground hover:text-blue-400 transition-colors">View details</button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {(() => {
+              const daily = costData.dailyCosts || [];
+              const today = new Date().toISOString().slice(0, 10);
+              const todayCost = daily.find((d: any) => d.date === today)?.cost || 0;
+
+              // This week (since Monday)
+              const now = new Date();
+              const dayOfWeek = now.getDay();
+              const monday = new Date(now);
+              monday.setDate(monday.getDate() - ((dayOfWeek + 6) % 7));
+              const mondayStr = monday.toISOString().slice(0, 10);
+              const weekCost = daily.filter((d: any) => d.date >= mondayStr).reduce((s: number, d: any) => s + d.cost, 0);
+              const weekTokens = daily.filter((d: any) => d.date >= mondayStr).reduce((s: number, d: any) => s + d.inputTokens + d.outputTokens, 0);
+
+              const totalCost = costData.totalCost || 0;
+              const byModel = costData.byModel || {};
+
+              // Active sessions cost
+              const activeCost = liveData?.activeSessions?.reduce((s: number, se: any) => s + (se.costEstimate || 0), 0) || 0;
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Today */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Today</span>
+                      <span className="text-sm font-mono font-bold text-blue-400">${todayCost.toFixed(2)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted/50 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400" style={{ width: `${Math.min((todayCost / 20) * 100, 100)}%` }} />
+                    </div>
+                  </div>
+
+                  {/* This Week */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">This week</span>
+                      <span className="text-sm font-mono font-bold text-purple-400">${weekCost.toFixed(2)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted/50 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-purple-400" style={{ width: `${Math.min((weekCost / 100) * 100, 100)}%` }} />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground/50">{(weekTokens / 1_000_000).toFixed(1)}M tokens</span>
+                  </div>
+
+                  {/* All Time */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">All time (30d)</span>
+                      <span className="text-sm font-mono font-bold text-amber-400">${totalCost.toFixed(2)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted/50 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: `${Math.min((totalCost / 200) * 100, 100)}%` }} />
+                    </div>
+                    {activeCost > 0 && <span className="text-[10px] text-green-400">${activeCost.toFixed(2)} active now</span>}
+                  </div>
+
+                  {/* By Model */}
+                  <div className="space-y-1.5">
+                    <span className="text-xs text-muted-foreground">By model</span>
+                    {Object.entries(byModel).map(([model, data]: [string, any]) => (
+                      <div key={model} className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 w-14 justify-center">
+                          {model}
+                        </Badge>
+                        <div className="flex-1 h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${model === "opus" ? "bg-purple-500" : model === "sonnet" ? "bg-blue-500" : "bg-green-500"}`}
+                            style={{ width: `${totalCost > 0 ? (data.cost / totalCost) * 100 : 0}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-mono text-muted-foreground w-12 text-right">${data.cost.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Actions + Session Stats row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

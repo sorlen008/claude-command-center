@@ -23,10 +23,19 @@ interface SearchMatch {
   lineIndex: number;
 }
 
+/** Check if all query words appear in the text. Returns index of first word match or -1. */
+function fuzzyMatch(textLower: string, queryWords: string[]): number {
+  for (const word of queryWords) {
+    if (!textLower.includes(word)) return -1;
+  }
+  // Return index of first word for snippet extraction
+  return textLower.indexOf(queryWords[0]);
+}
+
 /** Search a single session JSONL file for query matches */
 function searchSessionFile(
   filePath: string,
-  queryLower: string,
+  queryWords: string[],
   field: "all" | "user" | "assistant",
   maxMatches: number,
 ): SearchMatch[] {
@@ -53,8 +62,7 @@ function searchSessionFile(
           if (!msg || typeof msg !== "object") { lineIndex++; continue; }
           const text = extractMessageText(msg.content, true);
           if (text) {
-            const textLower = text.toLowerCase();
-            const idx = textLower.indexOf(queryLower);
+            const idx = fuzzyMatch(text.toLowerCase(), queryWords);
             if (idx !== -1) {
               matches.push({
                 role: "user",
@@ -69,8 +77,7 @@ function searchSessionFile(
           if (!msg || typeof msg !== "object") { lineIndex++; continue; }
           const text = extractMessageText(msg.content, true);
           if (text) {
-            const textLower = text.toLowerCase();
-            const idx = textLower.indexOf(queryLower);
+            const idx = fuzzyMatch(text.toLowerCase(), queryWords);
             if (idx !== -1) {
               matches.push({
                 role: "assistant",
@@ -110,10 +117,10 @@ export async function deepSearch(params: {
   limit?: number;
 }): Promise<DeepSearchResult> {
   const { query, sessions, field = "all", dateFrom, dateTo, project, summaries = {}, limit = 50 } = params;
-  const queryLower = query.toLowerCase();
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
 
   // Check cache
-  const cacheKey = JSON.stringify({ query: queryLower, field, dateFrom, dateTo, project, limit });
+  const cacheKey = JSON.stringify({ query: queryWords.join(" "), field, dateFrom, dateTo, project, limit });
   if (cachedQuery === cacheKey && cachedResult && Date.now() - cachedAt < CACHE_TTL_MS) {
     return cachedResult;
   }
@@ -140,14 +147,13 @@ export async function deepSearch(params: {
     const batchResults = await Promise.all(
       batch.map(async (session) => {
         // Search in JSONL file
-        const matches = searchSessionFile(session.filePath, queryLower, field, 10);
+        const matches = searchSessionFile(session.filePath, queryWords, field, 10);
 
         // Also search summary text if available
         const summary = summaries[session.id];
         if (summary) {
           const summaryText = summary.summary;
-          const summaryLower = summaryText.toLowerCase();
-          const idx = summaryLower.indexOf(queryLower);
+          const idx = fuzzyMatch(summaryText.toLowerCase(), queryWords);
           if (idx !== -1 && matches.length < 10) {
             matches.push({
               role: "assistant" as const,

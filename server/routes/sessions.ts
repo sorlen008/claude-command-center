@@ -136,10 +136,10 @@ router.get("/api/sessions", (req: Request, res: Response) => {
   if (hideEmpty === "true") sessions = sessions.filter(s => !s.isEmpty);
   if (activeOnly === "true") sessions = sessions.filter(s => s.isActive);
   if (q) {
-    const lowerQ = q.toLowerCase();
+    const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     sessions = sessions.filter(s => {
-      const haystack = [s.firstMessage, s.slug, s.tags.join(" "), s.id].join(" ").toLowerCase();
-      return haystack.includes(lowerQ);
+      const haystack = [s.firstMessage, s.slug, s.tags.join(" "), s.id, s.summaryTopics?.join(" ")].join(" ").toLowerCase();
+      return words.every(w => haystack.includes(w));
     });
   }
 

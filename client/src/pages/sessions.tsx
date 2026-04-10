@@ -60,7 +60,7 @@ export default function Sessions() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "single" | "bulk" | "all"; id?: string } | null>(null);
-  const [searchMode, setSearchMode] = useState<"titles" | "deep">("titles");
+  const [searchMode, setSearchMode] = useState<"titles" | "deep" | "uuid">("deep");
   const [activeTab, setActiveTab] = useState<"sessions" | "analytics">("sessions");
 
   // Read project filter from URL
@@ -82,6 +82,10 @@ export default function Sessions() {
 
   const sessions = data?.sessions || [];
   const stats = data?.stats;
+
+  const uuidResults = searchMode === "uuid" && search.length >= 3
+    ? sessions.filter(s => s.id.toLowerCase().includes(search.toLowerCase()))
+    : null;
 
   const handleCopyResume = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -204,7 +208,7 @@ export default function Sessions() {
           <div className="flex items-center gap-0">
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder={searchMode === "deep" ? "Deep search content..." : "Search sessions..."} value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-r-none" />
+              <Input placeholder={searchMode === "uuid" ? "Paste or type UUID..." : searchMode === "deep" ? "Deep search content..." : "Search sessions..."} value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-r-none" />
             </div>
             <div className="flex border border-l-0 border-border rounded-r-md overflow-hidden">
               <button
@@ -222,6 +226,14 @@ export default function Sessions() {
                 }`}
               >
                 <Zap className="h-3 w-3 inline mr-0.5" />Deep
+              </button>
+              <button
+                onClick={() => setSearchMode("uuid")}
+                className={`text-[11px] px-2.5 py-[7px] transition-colors ${
+                  searchMode === "uuid" ? "bg-cyan-500/10 text-cyan-400 font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <Hash className="h-3 w-3 inline mr-0.5" />UUID
               </button>
             </div>
           </div>
@@ -329,8 +341,41 @@ export default function Sessions() {
         </div>
       )}
 
-      {/* Session list / Deep search results */}
-      {searchMode === "deep" && search.length >= 2 ? (
+      {/* Session list / UUID search / Deep search results */}
+      {searchMode === "uuid" && search.length >= 3 ? (
+        uuidResults && uuidResults.length > 0 ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+              <Hash className="h-3.5 w-3.5 text-cyan-400" />
+              {uuidResults.length} session{uuidResults.length !== 1 ? "s" : ""} matching UUID
+            </div>
+            {uuidResults.map((s, i) => (
+              <SessionCard
+                key={s.id}
+                session={s}
+                index={i}
+                isSelected={selected.has(s.id)}
+                isExpanded={expanded === s.id}
+                copiedId={copiedId}
+                detail={expanded === s.id ? expandedDetail.data : undefined}
+                onToggleSelect={handleToggleSelect}
+                onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
+                onCopyId={handleCopyId}
+                onCopyResume={handleCopyResume}
+                onOpenFolder={handleOpenFolder}
+                onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
+                onSummarize={(id) => summarizeSession.mutate(id)}
+                isSummarizing={summarizeSession.isPending}
+                onTogglePin={(id) => togglePin.mutate(id)}
+                onSaveNote={(id, text) => saveNote.mutate({ id, text })}
+                searchQuery={search}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon={Hash} title="No sessions matching UUID" description="Try a partial or full UUID" />
+        )
+      ) : searchMode === "deep" && search.length >= 2 ? (
         // Deep search mode
         deepSearchQuery.isLoading ? (
           <div className="flex items-center gap-3 justify-center py-12 text-muted-foreground">
