@@ -30,31 +30,30 @@ A local dashboard for visualizing and managing your [Claude Code](https://docs.a
   <img src="docs/demo.gif" alt="Claude Command Center Demo" width="800">
 </p>
 
-<!-- Screenshots excluded from repo to prevent PII leaks. Run locally to see the UI. -->
+### What you get
+
+| | |
+|---|---|
+| **Dashboard** -- entity counts, usage tracking, system health, quick actions | **Sessions** -- deep search, AI summaries, pins, notes, bulk delete |
+| **Live View** -- real-time sessions with context bars, cost estimates, agents | **Analytics** -- daily cost charts, model breakdown, error tracking |
+| **Graph** -- interactive entity map with custom nodes and AI suggestions | **MCP Servers** -- auto-discovered from all `.mcp.json` files, categorized |
 
 ---
 
 ## Quick Start
 
-### Option 1: npm (recommended)
-
 ```bash
-npm install -g claude-command-center
-claude-command-center
-```
-
-### Option 2: From source
-
-```bash
+# Clone and run (3 commands)
 git clone https://github.com/sorlen008/claude-command-center.git
 cd claude-command-center
-npm install
-npm run dev
+npm install && npm run dev
 ```
 
-Open [http://localhost:5100](http://localhost:5100). Everything is auto-discovered from your `~/.claude/` directory.
+Open [http://localhost:5100](http://localhost:5100). Done. Everything is auto-discovered from your `~/.claude/` directory — no configuration needed.
 
-See [SETUP.md](SETUP.md) for detailed installation instructions and troubleshooting.
+> **Tip:** Keep it running in the background while you work in Claude Code. The dashboard auto-refreshes every 3 seconds.
+
+See [SETUP.md](SETUP.md) for npm global install, production builds, and troubleshooting.
 
 ## Requirements
 

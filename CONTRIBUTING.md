@@ -54,6 +54,37 @@ fix: handle missing .claude directory gracefully
 chore: update dependencies
 ```
 
+## Good first issues
+
+Look for issues labeled [`good first issue`](https://github.com/sorlen008/claude-command-center/labels/good%20first%20issue) — these are scoped, well-defined tasks ideal for first-time contributors. Examples of what makes a good contribution:
+
+- Add a new stat card or chart to the Analytics page
+- Improve an existing page's UX (better loading states, empty states)
+- Add a new MCP server to the knowledge base catalog (`server/scanner/knowledge-base.ts`)
+- Write tests for untested routes or parsers
+- Fix a UI bug or accessibility issue
+
+## Architecture overview
+
+```
+server/
+  routes/          # Express API routes (/api/sessions, /api/entities, etc.)
+  scanner/         # JSONL parsers, file watchers, analytics engines
+  db.ts            # JSON database with atomic writes
+  storage.ts       # Storage abstraction layer
+shared/
+  types.ts         # Shared TypeScript interfaces (server + client)
+client/
+  src/pages/       # React page components (one file per page)
+  src/hooks/       # React Query hooks (data fetching)
+  src/components/  # Reusable UI components (shadcn-based)
+tests/             # Vitest tests
+```
+
+**Adding a new page:** Create a page in `client/src/pages/`, add a route in `App.tsx`, add a nav item in `layout.tsx`. Create a hook in `client/src/hooks/` if it needs data. Add an API route in `server/routes/` if needed.
+
+**Adding a new scanner:** Add a file in `server/scanner/`, export it from the scanner index, and call it during the scan cycle.
+
 ## Reporting bugs
 
 Open a [GitHub issue](https://github.com/sorlen008/claude-command-center/issues) with:
