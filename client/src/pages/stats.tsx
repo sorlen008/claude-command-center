@@ -17,7 +17,9 @@ import {
   Cpu,
   Shield,
 } from "lucide-react";
-import { formatBytes, formatDayLabel, isToday } from "@/lib/utils";
+import { formatBytes, formatDayLabel, isToday, downloadCSV } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 
 // ---- Types ----
 
@@ -376,6 +378,21 @@ function CostsTab() {
             <DollarSign className="h-4 w-4 text-green-400" />
             Daily Cost
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">Last 30 days</Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto h-6 text-[10px] gap-1"
+              onClick={() => downloadCSV("claude-daily-costs.csv", data.dailyCosts.map(d => ({
+                date: d.date,
+                input_tokens: d.inputTokens,
+                output_tokens: d.outputTokens,
+                cache_read_tokens: d.cacheReadTokens,
+                cache_write_tokens: d.cacheWriteTokens,
+                cost_usd: d.cost,
+              })))}
+            >
+              <Download className="h-3 w-3" />CSV
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>

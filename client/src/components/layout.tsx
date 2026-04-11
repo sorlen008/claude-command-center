@@ -94,10 +94,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setEditingName(false);
   };
 
-  // Keyboard shortcut for collapse
+  // Keyboard shortcut for collapse (Ctrl+L or Ctrl+B)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "l") {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "l" || e.key === "b")) {
         e.preventDefault();
         setCollapsed((c) => !c);
       }

@@ -275,6 +275,156 @@ export const MCP_CATALOG: Record<string, MCPCatalogEntry> = {
       "Provide mock responses for development",
     ],
   },
+  "twilio": {
+    description: "Twilio voice, SMS, and messaging platform integration",
+    category: "integration",
+    capabilities: [
+      "Send SMS and voice messages",
+      "Query message logs and delivery status",
+      "Manage phone numbers and configurations",
+    ],
+    website: "https://twilio.com",
+  },
+  "notion": {
+    description: "Notion workspace integration for pages, databases, and content",
+    category: "productivity",
+    capabilities: [
+      "Query and create Notion pages and databases",
+      "Update page properties and content blocks",
+      "Search workspace content and filter results",
+    ],
+    website: "https://notion.so",
+  },
+  "airtable": {
+    description: "Airtable spreadsheet-database hybrid with rich field types",
+    category: "data",
+    capabilities: [
+      "Query and create records in Airtable bases",
+      "Manage tables, views, and fields",
+      "Handle attachments and linked records",
+    ],
+    website: "https://airtable.com",
+  },
+  "perplexity": {
+    description: "Perplexity AI real-time search and research engine",
+    category: "ai",
+    capabilities: [
+      "Perform real-time web searches with AI synthesis",
+      "Get cited sources and answer summaries",
+      "Research topics with deep analysis",
+    ],
+    website: "https://perplexity.ai",
+  },
+  "mongodb": {
+    description: "MongoDB NoSQL database query and management",
+    category: "data",
+    capabilities: [
+      "Query and insert documents in collections",
+      "Manage databases, indexes, and aggregations",
+      "Perform aggregation pipelines and bulk operations",
+    ],
+    website: "https://mongodb.com",
+  },
+  "redis": {
+    description: "Redis in-memory data structure store and cache",
+    category: "data",
+    capabilities: [
+      "Get, set, and manipulate Redis keys and data structures",
+      "Execute commands and pipelines",
+      "Query database information and stats",
+    ],
+    website: "https://redis.io",
+  },
+  "docker": {
+    description: "Docker container and image management",
+    category: "dev-tools",
+    capabilities: [
+      "List and manage containers and images",
+      "Build, run, and stop containers",
+      "View logs and inspect container state",
+    ],
+    website: "https://docker.com",
+  },
+  "aws": {
+    description: "Amazon Web Services cloud infrastructure management",
+    category: "dev-tools",
+    capabilities: [
+      "Query EC2 instances, S3 buckets, and Lambda functions",
+      "Manage IAM roles and security groups",
+      "View CloudWatch logs and metrics",
+    ],
+    website: "https://aws.amazon.com",
+  },
+  "datadog": {
+    description: "Datadog monitoring and observability platform",
+    category: "dev-tools",
+    capabilities: [
+      "Query metrics and time series data",
+      "View dashboards and alerts",
+      "Search logs and application traces",
+    ],
+    website: "https://datadoghq.com",
+  },
+  "sentry": {
+    description: "Sentry error tracking and crash reporting",
+    category: "dev-tools",
+    capabilities: [
+      "Query issues, errors, and crash reports",
+      "Get event details and stack traces",
+      "Track releases and deployment health",
+    ],
+    website: "https://sentry.io",
+  },
+  "jira": {
+    description: "Jira project management and issue tracking",
+    category: "dev-tools",
+    capabilities: [
+      "Create and manage issues and projects",
+      "Query sprints, epics, and backlog items",
+      "Track issue history and transitions",
+    ],
+    website: "https://atlassian.com/software/jira",
+  },
+  "clickup": {
+    description: "ClickUp project management workspace",
+    category: "productivity",
+    capabilities: [
+      "Create and manage tasks and lists",
+      "Query spaces, teams, and workspaces",
+      "Track time and view project timelines",
+    ],
+    website: "https://clickup.com",
+  },
+  "hubspot": {
+    description: "HubSpot CRM and marketing automation platform",
+    category: "integration",
+    capabilities: [
+      "Query and manage CRM contacts and deals",
+      "Access marketing automation workflows",
+      "Track sales pipelines and performance",
+    ],
+    website: "https://hubspot.com",
+  },
+  "shopify": {
+    description: "Shopify e-commerce platform and store management",
+    category: "integration",
+    capabilities: [
+      "Query products, orders, and customers",
+      "Manage inventory and fulfillment",
+      "Access store analytics and sales data",
+    ],
+    website: "https://shopify.com",
+  },
+  "vercel": {
+    description: "Vercel deployment platform for frontend applications",
+    category: "dev-tools",
+    capabilities: [
+      "Query deployments, domains, and projects",
+      "Manage environment variables and build settings",
+      "View deployment logs and analytics",
+    ],
+    website: "https://vercel.com",
+  },
 };
 
 export const PLUGIN_CATALOG: Record<string, PluginCatalogEntry> = {

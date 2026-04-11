@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/skeleton";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ArrowLeft, Save, History, RotateCcw, Check, List, Info, ShieldCheck, AlertTriangle, CheckCircle, FileWarning, Lock, Unlock, Zap, FileText, Plus } from "lucide-react";
 import MDEditor from "@uiw/react-md-editor";
 
@@ -140,6 +140,17 @@ export default function MarkdownEdit() {
   const fm = file?.data?.frontmatter as Record<string, unknown> | null;
   const meta = file ? fileMeta?.[file.path] : undefined;
   const isLocked = meta?.locked;
+
+  // Autosave: debounce 2s after last edit
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (!dirty || isLocked) return;
+    if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+    autoSaveRef.current = setTimeout(() => {
+      if (dirty && !isLocked) handleSave();
+    }, 2000);
+    return () => { if (autoSaveRef.current) clearTimeout(autoSaveRef.current); };
+  }, [content, dirty, isLocked, handleSave]);
 
   const wordCount = useMemo(() => content.split(/\s+/).filter(Boolean).length, [content]);
   const tokenEstimate = useMemo(() => Math.ceil(content.length / 4), [content]);

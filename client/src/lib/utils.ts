@@ -64,3 +64,43 @@ export function isToday(dateStr: string): boolean {
   const today = new Date().toISOString().slice(0, 10);
   return dateStr === today;
 }
+
+export function formatDuration(firstTs: string | null, lastTs: string | null): string {
+  if (!firstTs || !lastTs) return "-";
+  const diffMs = new Date(lastTs).getTime() - new Date(firstTs).getTime();
+  if (diffMs < 0) return "-";
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "<1m";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hrs < 24) return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  const remHrs = hrs % 24;
+  return remHrs > 0 ? `${days}d ${remHrs}h` : `${days}d`;
+}
+
+export function formatTokens(count: number): string {
+  if (count < 1000) return String(count);
+  if (count < 1_000_000) return `${Math.round(count / 1000)}K`;
+  return `${(count / 1_000_000).toFixed(1)}M`;
+}
+
+export function downloadCSV(filename: string, rows: Record<string, string | number>[]) {
+  if (rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(","),
+    ...rows.map(row => headers.map(h => {
+      const val = row[h];
+      return typeof val === "string" && val.includes(",") ? `"${val}"` : String(val);
+    }).join(","))
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

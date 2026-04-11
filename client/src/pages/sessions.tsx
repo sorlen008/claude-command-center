@@ -19,7 +19,7 @@ import {
   Server, Brain, TerminalSquare, Phone, Send, ArrowRight, Lightbulb,
 } from "lucide-react";
 import type { SessionData, DeepSearchMatch } from "@shared/types";
-import { formatBytes, relativeTime as _relativeTime } from "@/lib/utils";
+import { formatBytes, relativeTime as _relativeTime, formatDuration } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 
 function escapeRegex(s: string) {
@@ -1451,6 +1451,14 @@ function SessionCard({
             <div className="text-xs font-mono text-muted-foreground tabular-nums">
               {formatBytes(s.sizeBytes)}
             </div>
+            <div className="text-xs font-mono text-muted-foreground/50 tabular-nums">
+              {formatDuration(s.firstTs, s.lastTs)}
+            </div>
+            {s.sizeBytes > 1024 && (
+              <div className="text-[10px] font-mono text-muted-foreground/40 tabular-nums">
+                ~{formatTokens(Math.round(s.sizeBytes / 4))}
+              </div>
+            )}
           </div>
 
           {/* Pin indicator (clickable) */}
