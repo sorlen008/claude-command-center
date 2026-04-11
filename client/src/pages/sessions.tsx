@@ -62,13 +62,15 @@ export default function Sessions() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "single" | "bulk" | "all"; id?: string } | null>(null);
   const [searchMode, setSearchMode] = useState<"titles" | "deep" | "uuid">("deep");
   const [activeTab, setActiveTab] = useState<"sessions" | "analytics">("sessions");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
 
   // Read project filter from URL
   const urlParams = new URLSearchParams(window.location.search);
   const [projectFilter, setProjectFilter] = useState(urlParams.get("project") || "");
 
   const [sort, order] = sortKey.split(":") as [string, string];
-  const { data, isLoading } = useSessions({ q: search || undefined, sort, order, hideEmpty, activeOnly, project: projectFilter || undefined });
+  const { data, isLoading } = useSessions({ q: search || undefined, sort, order, hideEmpty, activeOnly, project: projectFilter || undefined, page, limit: PAGE_SIZE });
   const expandedDetail = useSessionDetail(expanded || undefined);
   const deleteSession = useDeleteSession();
   const bulkDelete = useBulkDeleteSessions();
@@ -448,6 +450,31 @@ export default function Sessions() {
               searchQuery={search}
             />
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data?.totalPages && data.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 py-4">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            Page {data.page || page} of {data.totalPages} ({data.total} sessions)
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= (data.totalPages || 1)}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Next
+          </Button>
         </div>
       )}
 

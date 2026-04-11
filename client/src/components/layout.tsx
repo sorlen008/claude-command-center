@@ -72,7 +72,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { data: status } = useScanStatus();
   const { data: settings } = useAppSettings();
   const updateSettings = useUpdateSettings();
-  const [collapsed, setCollapsed] = useState(false);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const [collapsed, setCollapsed] = useState(isMobile);
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +111,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <MoodPlayerProvider>
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <aside className={cn(
+      <aside role="navigation" aria-label="Main navigation" className={cn(
         "border-r flex flex-col transition-all duration-200 relative bg-sidebar",
         collapsed ? "w-14" : "w-56"
       )}>

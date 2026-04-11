@@ -141,6 +141,9 @@ export default function TreeView({ nodes, edges, onNodeClick, searchQuery }: Vie
       projectChildren.set(p.id, []);
     }
 
+    // Build node lookup map for O(1) access instead of O(n) find()
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
     for (const edge of edges) {
       const projectId = projectChildren.has(edge.source)
         ? edge.source
@@ -150,7 +153,7 @@ export default function TreeView({ nodes, edges, onNodeClick, searchQuery }: Vie
 
       if (projectId) {
         const childId = projectId === edge.source ? edge.target : edge.source;
-        const childNode = nodes.find((n) => n.id === childId);
+        const childNode = nodeMap.get(childId);
         if (childNode) {
           projectChildren.get(projectId)!.push({
             node: childNode,

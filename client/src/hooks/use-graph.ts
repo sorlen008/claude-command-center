@@ -9,5 +9,7 @@ export function useGraphData(types?: string[], centerId?: string) {
 
   return useQuery<GraphData>({
     queryKey: [`/api/graph${qs ? `?${qs}` : ""}`],
+    staleTime: 30_000,
+    gcTime: 60_000,
   });
 }

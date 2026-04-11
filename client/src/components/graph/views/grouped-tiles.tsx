@@ -6,10 +6,6 @@ import { entityColors } from "@/components/graph/graph-nodes";
 import type { GraphNode, GraphNodeType } from "@shared/types";
 import type { ViewProps } from "./types";
 
-function connectionCount(nodeId: string, edges: ViewProps["edges"]): number {
-  return edges.filter((e) => e.source === nodeId || e.target === nodeId).length;
-}
-
 function isMatch(node: GraphNode, query: string): boolean {
   if (!query) return false;
   const q = query.toLowerCase();
@@ -20,6 +16,15 @@ function isMatch(node: GraphNode, query: string): boolean {
 }
 
 export default function GroupedTiles({ nodes, edges, onNodeClick, searchQuery }: ViewProps) {
+  // Pre-compute connection counts in O(e) instead of O(n*e)
+  const connectionMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of edges) {
+      map.set(e.source, (map.get(e.source) ?? 0) + 1);
+      map.set(e.target, (map.get(e.target) ?? 0) + 1);
+    }
+    return map;
+  }, [edges]);
   const groups = useMemo(() => {
     const map = new Map<string, GraphNode[]>();
     for (const node of nodes) {
@@ -55,7 +60,7 @@ export default function GroupedTiles({ nodes, edges, onNodeClick, searchQuery }:
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 p-4">
                 {groupNodes.map((node) => {
                   const matched = isMatch(node, searchQuery);
-                  const conns = connectionCount(node.id, edges);
+                  const conns = connectionMap.get(node.id) ?? 0;
 
                   return (
                     <button
