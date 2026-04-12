@@ -4,6 +4,41 @@ import path from "path";
 import fs from "fs";
 import matter from "gray-matter";
 
+/**
+ * Category inference rules — order matters, first match wins.
+ * More specific patterns come first.
+ */
+const CATEGORY_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/docker|container|kubernetes|k8s|compose/, "devops"],
+  [/deploy|release|ci[\/-]?cd|build|publish|version|bump/, "devops"],
+  [/test|uat|lint|check|validate|audit/, "quality"],
+  [/git|commit|push|pull|branch|merge|pr\b/, "git"],
+  [/finance|bank|transaction|budget|invoice|payment|accounting/, "finance"],
+  [/call|phone|voice|sms|twilio|vapi|whatsapp/, "communication"],
+  [/telegram|slack|discord|email|message|notify|chat/, "communication"],
+  [/browser|playwright|scrape|automat|selenium|puppeteer/, "automation"],
+  [/cron|schedule|automat|trigger|webhook|loop/, "automation"],
+  [/sync|backup|restore|migrate|transfer|copy/, "automation"],
+  [/video|movie|audio|caption|subtitle|media|cut|ffmpeg|plex/, "media"],
+  [/image|screenshot|photo|resize|convert/, "media"],
+  [/session|resume|search|browse|history|log/, "workflow"],
+  [/start|stop|restart|status|server|service|daemon/, "services"],
+  [/api|sdk|claude|openai|anthropic|ai\b|llm|model/, "ai"],
+  [/design|ui|ux|component|frontend|css|style|figma/, "design"],
+  [/database|sql|postgres|mongo|redis|query|schema/, "data"],
+  [/nas|download|torrent|plex|stream/, "media"],
+  [/villa|construction|project|plan/, "project"],
+];
+
+/** Auto-categorize a skill by matching keywords in name + description */
+function inferCategory(name: string, description: string | null): string {
+  const text = `${name} ${description || ""}`.toLowerCase();
+  for (const [pattern, category] of CATEGORY_RULES) {
+    if (pattern.test(text)) return category;
+  }
+  return "general";
+}
+
 export function scanSkills(): Entity[] {
   const results: Entity[] = [];
   const seen = new Set<string>();
@@ -96,6 +131,7 @@ export function scanSkills(): Entity[] {
         userInvocable: frontmatter["user-invocable"] === true,
         args: frontmatter.args || null,
         content: body.trim().slice(0, 1500),
+        category: frontmatter.category || inferCategory(frontmatter.name || skillName, frontmatter.description || null),
       },
       scannedAt: now(),
     });

@@ -197,16 +197,27 @@ export default function Sessions() {
             <option value="messageCount:desc">Most Messages</option>
             <option value="messageCount:asc">Fewest Messages</option>
           </select>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => summarizeBatch.mutate()}
-            disabled={summarizeBatch.isPending}
-            className="gap-1.5"
-          >
-            {summarizeBatch.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {summarizeBatch.isPending ? "Summarizing..." : "Summarize All"}
-          </Button>
+          <div className="relative">
+            <select
+              className="appearance-none text-xs bg-background border rounded-md pl-7 pr-8 py-[7px] outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer text-foreground hover:border-purple-500/50 transition-colors"
+              disabled={summarizeBatch.isPending}
+              value=""
+              onChange={(e) => {
+                const mode = e.target.value as "all" | "top10" | "pinned";
+                if (mode) summarizeBatch.mutate(mode);
+                e.target.value = "";
+              }}
+            >
+              <option value="" disabled>{summarizeBatch.isPending ? "Summarizing..." : "Summarize"}</option>
+              <option value="all">All (next 10 unsummarized)</option>
+              <option value="top10">Top 10 most used</option>
+              <option value="pinned">Pinned sessions only</option>
+            </select>
+            <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
+              {summarizeBatch.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" /> : <Sparkles className="h-3.5 w-3.5 text-purple-400" />}
+            </div>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          </div>
           <div className="flex items-center gap-0">
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

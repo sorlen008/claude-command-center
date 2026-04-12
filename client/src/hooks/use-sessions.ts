@@ -126,8 +126,8 @@ export function useSummarizeSession() {
 export function useSummarizeBatch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/sessions/summarize-batch");
+    mutationFn: async (mode: "all" | "top10" | "pinned" = "all") => {
+      const res = await apiRequest("POST", "/api/sessions/summarize-batch", { mode });
       return res.json() as Promise<{ summarized: string[]; failed: string[]; skipped: string[] }>;
     },
     onSuccess: () => {

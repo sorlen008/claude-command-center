@@ -166,7 +166,7 @@ Respond with ONLY valid JSON (no markdown, no explanation):
     const env = { ...process.env };
     delete env.CLAUDECODE;
 
-    const child = spawn("claude", ["-p", "--model", "haiku"], {
+    const child = spawn("claude", ["-p", "--model", "haiku", "--no-session-persistence"], {
       env,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -277,7 +277,7 @@ Respond with ONLY valid JSON (no markdown, no explanation):
         });
       } catch (parseErr) {
         console.error("[ai-suggest] Failed to parse AI response:", stdout.slice(0, 500));
-        res.status(500).json({ message: "Failed to parse AI suggestions", raw: stdout.slice(0, 500) });
+        res.status(500).json({ message: "Failed to parse AI suggestions" });
       }
     });
   } catch (err) {

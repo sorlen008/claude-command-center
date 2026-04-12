@@ -89,10 +89,14 @@ describe("No hardcoded phone numbers", () => {
   }
 });
 
-describe("No Saeed-specific project names in user-facing UI text", () => {
-  const UI_FILES = getSourceFiles(path.join(ROOT, "client", "src"));
+describe("No developer-specific project names in source (client + server)", () => {
+  const UI_FILES = [
+    ...getSourceFiles(path.join(ROOT, "client", "src")),
+    ...getSourceFiles(path.join(ROOT, "server")),
+  ];
   const BANNED_UI_STRINGS = [
     { pattern: /Nicora Desk/g, label: "Nicora Desk (developer-specific project)" },
+    { pattern: /nicora-desk/gi, label: "nicora-desk (developer-specific project)" },
     { pattern: /findash/gi, label: "findash (developer-specific project)" },
     { pattern: /Cooper(?![\w])/g, label: "Cooper (developer-specific assistant)" },
     { pattern: /Villa Project/g, label: "Villa Project (developer-specific project)" },

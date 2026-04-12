@@ -34,8 +34,15 @@ describe("SessionIdSchema", () => {
 });
 
 describe("IdsArraySchema", () => {
-  it("accepts array of strings", () => {
-    expect(IdsArraySchema.safeParse(["a", "b", "c"]).success).toBe(true);
+  const validUuid1 = "66f313df-a17e-402b-90bd-f213951be4f3";
+  const validUuid2 = "a09f1a21-0f9d-4c10-9a9c-2570817071ce";
+
+  it("accepts array of valid UUIDs", () => {
+    expect(IdsArraySchema.safeParse([validUuid1, validUuid2]).success).toBe(true);
+  });
+
+  it("rejects non-UUID strings", () => {
+    expect(IdsArraySchema.safeParse(["not-a-uuid"]).success).toBe(false);
   });
 
   it("rejects empty array", () => {

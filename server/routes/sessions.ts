@@ -219,12 +219,24 @@ router.get("/api/sessions/search", async (req: Request, res: Response) => {
   }
 });
 
-/** POST /api/sessions/summarize-batch — Summarize up to 10 unsummarized sessions */
-router.post("/api/sessions/summarize-batch", async (_req: Request, res: Response) => {
+/** POST /api/sessions/summarize-batch — Summarize sessions (mode: all, top10, pinned) */
+const MAX_BATCH_SUMMARIZE = 10;
+router.post("/api/sessions/summarize-batch", async (req: Request, res: Response) => {
   if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for AI summarization" });
+  const modeInput = (req.body as { mode?: unknown }).mode;
+  const mode = modeInput === "top10" || modeInput === "pinned" ? modeInput : "all";
   try {
-    const sessions = getCachedSessions();
-    const result = await summarizeBatch(sessions, 10);
+    let sessions = getCachedSessions();
+    const pinnedSet = new Set(storage.getPinnedSessions());
+
+    if (mode === "pinned") {
+      sessions = sessions.filter(s => pinnedSet.has(s.id));
+    } else if (mode === "top10") {
+      sessions = [...sessions].sort((a, b) => b.messageCount - a.messageCount).slice(0, 10);
+    }
+
+    // Cap all modes at MAX_BATCH_SUMMARIZE to prevent subprocess storms
+    const result = await summarizeBatch(sessions, MAX_BATCH_SUMMARIZE);
     res.json(result);
   } catch (err) {
     console.error("[sessions] Batch summarize failed:", (err as Error).message);

@@ -7,7 +7,7 @@ import os from "os";
 
 export const SessionIdSchema = z.string().regex(/^[a-f0-9-]{36}$/i, "Invalid session ID format");
 
-export const IdsArraySchema = z.array(z.string().min(1).max(200)).min(1).max(1000);
+export const IdsArraySchema = z.array(SessionIdSchema).min(1).max(1000);
 
 export const SessionListSchema = z.object({
   q: z.string().max(500).optional(),
