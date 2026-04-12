@@ -726,6 +726,33 @@ export default function GraphPage() {
                 )}
               </div>
 
+              {/* Blast radius impact */}
+              {pathNodeIds.size > 1 && graphData && (
+                <div className="border-t border-border/50 pt-4 mb-4">
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                    Blast Radius
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground mb-2">
+                    If this {selectedNode?.type || "entity"} changes, <span className="text-amber-400 font-medium">{pathNodeIds.size - 1}</span> entities are affected:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {(() => {
+                      const counts: Record<string, number> = {};
+                      for (const id of Array.from(pathNodeIds)) {
+                        if (id === selectedNode?.id) continue;
+                        const n = graphData.nodes.find((n: any) => n.id === id);
+                        if (n) counts[n.type] = (counts[n.type] || 0) + 1;
+                      }
+                      return Object.entries(counts).map(([type, count]) => (
+                        <span key={type} className="text-[10px] px-2 py-0.5 rounded-full border border-border/50 text-muted-foreground">
+                          {count} {type}{count > 1 ? "s" : ""}
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
               {/* Connected nodes */}
               {selectedConnections.length > 0 && (
                 <div className="border-t border-border/50 pt-4 mb-4">

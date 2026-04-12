@@ -807,6 +807,80 @@ router.post("/api/sessions/delete-all", (_req: Request, res: Response) => {
   res.json({ deleted, skipped, canUndo: batch.length > 0 });
 });
 
+/** GET /api/sessions/:id/export/html — Export session as standalone HTML */
+router.get("/api/sessions/:id/export/html", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID" });
+
+  const session = getCachedSessions().find(s => s.id === idResult.data);
+  if (!session) return res.status(404).json({ message: "Session not found" });
+
+  const records = readMessageTimeline(session.filePath, { includeModel: true });
+  const summary = storage.getSummary(session.id);
+
+  const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const formatDate = (ts: string) => ts ? new Date(ts).toLocaleString() : "";
+
+  const messagesHtml = records.map(r => {
+    const isUser = r.role === "user" || r.type === "user";
+    const roleLabel = isUser ? "User" : "Assistant";
+    const roleColor = isUser ? "#3b82f6" : "#8b5cf6";
+    const content = escapeHtml(r.contentPreview || "").replace(/\n/g, "<br>");
+    return `<div style="margin:12px 0;padding:12px 16px;border-radius:8px;background:${isUser ? "#1e293b" : "#1a1a2e"};border-left:3px solid ${roleColor}">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <strong style="color:${roleColor};font-size:13px">${roleLabel}</strong>
+        <span style="color:#64748b;font-size:11px">${formatDate(r.timestamp)}</span>
+      </div>
+      <div style="color:#e2e8f0;font-size:13px;line-height:1.6;white-space:pre-wrap">${content}</div>
+    </div>`;
+  }).join("\n");
+
+  const topicsHtml = (summary?.topics || session.tags || [])
+    .map((t: string) => `<span style="display:inline-block;padding:2px 8px;margin:2px;border-radius:4px;background:#334155;color:#94a3b8;font-size:11px">${escapeHtml(t)}</span>`)
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Session: ${escapeHtml(session.slug || session.firstMessage?.slice(0, 50) || session.id.slice(0, 8))}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;padding:24px;max-width:900px;margin:0 auto}
+h1{font-size:20px;margin-bottom:4px}
+.meta{color:#64748b;font-size:12px;margin-bottom:16px}
+.summary{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}
+.summary h3{color:#94a3b8;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.summary p{color:#cbd5e1;font-size:13px;line-height:1.6}
+.topics{margin:8px 0}
+.footer{margin-top:24px;padding-top:16px;border-top:1px solid #1e293b;color:#475569;font-size:11px;text-align:center}
+</style>
+</head>
+<body>
+<h1>${escapeHtml(session.slug || session.firstMessage?.slice(0, 60) || "Session")}</h1>
+<div class="meta">
+  ${session.id} | ${session.messageCount} messages | ${formatDate(session.firstTs || "")} — ${formatDate(session.lastTs || "")}
+</div>
+${summary ? `<div class="summary">
+  <h3>AI Summary</h3>
+  <p>${escapeHtml(summary.summary)}</p>
+  ${topicsHtml ? `<div class="topics">${topicsHtml}</div>` : ""}
+</div>` : topicsHtml ? `<div class="topics" style="margin-bottom:16px">${topicsHtml}</div>` : ""}
+<div class="messages">
+${messagesHtml}
+</div>
+<div class="footer">
+  Exported from Claude Command Center | ${new Date().toISOString().slice(0, 10)}
+</div>
+</body>
+</html>`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="session-${session.id.slice(0, 8)}.html"`);
+  res.send(html);
+});
+
 /** POST /api/sessions/undo — Restore last deleted batch from trash */
 router.post("/api/sessions/undo", (_req: Request, res: Response) => {
   if (lastDeleteBatch.length === 0) {

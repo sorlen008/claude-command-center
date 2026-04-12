@@ -16,7 +16,7 @@ import {
   Sparkles, Loader2, Zap, DollarSign, FileText, Activity, Archive,
   GitCommit, Clipboard, BarChart3, FolderKanban, Calendar, Settings,
   Plus, Play, BookOpen, Pin, StickyNote, MessageCircleQuestion,
-  Server, Brain, TerminalSquare, Phone, Send, ArrowRight, Lightbulb,
+  Server, Brain, TerminalSquare, Phone, Send, ArrowRight, Lightbulb, Download,
 } from "lucide-react";
 import type { SessionData, DeepSearchMatch } from "@shared/types";
 import { formatBytes, relativeTime as _relativeTime, formatDuration } from "@/lib/utils";
@@ -1534,6 +1534,13 @@ function SessionCard({
               ) : (
                 <Copy className="h-3.5 w-3.5 text-muted-foreground" />
               )}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(`/api/sessions/${s.id}/export/html`, "_blank"); }}
+              className="p-1.5 rounded hover:bg-cyan-500/10 transition-colors"
+              title="Export as HTML"
+            >
+              <Download className="h-3.5 w-3.5 text-cyan-400" />
             </button>
             <button
               onClick={(e) => onDelete(s.id, e)}

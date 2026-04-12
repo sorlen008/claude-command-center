@@ -30,4 +30,14 @@ router.get("/api/entities/:id/relationships", (req: Request, res: Response) => {
   res.json(rels);
 });
 
+/** GET /api/mcps/recommendations — MCP suggestions based on project tech stacks */
+router.get("/api/mcps/recommendations", (_req: Request, res: Response) => {
+  try {
+    const { getRecommendations } = require("../scanner/mcp-recommender");
+    res.json({ recommendations: getRecommendations() });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || "Failed to generate recommendations" });
+  }
+});
+
 export default router;
