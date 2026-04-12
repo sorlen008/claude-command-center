@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { EntityIcon, entityConfig } from "@/components/entity-badge";
 import { useScanStatus, useRescan, useEntities } from "@/hooks/use-entities";
 import { useRuntimeConfig } from "@/hooks/use-config";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useProjects } from "@/hooks/use-projects";
 import {
   RefreshCw, Clock, HardDrive, Cpu, Activity, Database,
@@ -38,7 +39,9 @@ export default function Dashboard() {
   const { data: projects } = useProjects();
   const rescan = useRescan();
   const { data: liveData } = useLiveData();
+  const { data: settings } = useAppSettings();
   const { data: costData } = useQuery<any>({ queryKey: ["/api/analytics/costs"], staleTime: 300_000 });
+  const { data: insightsData } = useQuery<{ insights: any[] }>({ queryKey: ["/api/analytics/insights"], staleTime: 300_000 });
 
   const counts = (status?.entityCounts || {}) as Record<string, number>;
   const activeSessions = liveData?.stats?.activeSessionCount || 0;
@@ -159,6 +162,7 @@ export default function Dashboard() {
 
               const totalCost = costData.totalCost || 0;
               const byModel = costData.byModel || {};
+              const budget = settings?.monthlyBudget || null;
 
               // Active sessions cost
               const activeCost = liveData?.activeSessions?.reduce((s: number, se: any) => s + (se.costEstimate || 0), 0) || 0;
@@ -188,14 +192,16 @@ export default function Dashboard() {
                     <span className="text-[10px] text-muted-foreground/50">{(weekTokens / 1_000_000).toFixed(1)}M tokens</span>
                   </div>
 
-                  {/* All Time */}
+                  {/* All Time / Budget */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">All time (30d)</span>
-                      <span className="text-sm font-mono font-bold text-amber-400">${totalCost.toFixed(2)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {budget ? `Budget ($${budget})` : "All time (30d)"}
+                      </span>
+                      <span className={`text-sm font-mono font-bold ${budget && totalCost > budget ? "text-red-400" : "text-amber-400"}`}>${totalCost.toFixed(2)}</span>
                     </div>
                     <div className="h-2 rounded-full bg-muted/50 overflow-hidden">
-                      <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: `${Math.min((totalCost / 200) * 100, 100)}%` }} />
+                      <div className={`h-full rounded-full ${budget && totalCost > budget * 0.8 ? "bg-gradient-to-r from-red-500 to-red-400" : "bg-gradient-to-r from-amber-500 to-amber-400"}`} style={{ width: `${Math.min((totalCost / (budget || 200)) * 100, 100)}%` }} />
                     </div>
                     {activeCost > 0 && <span className="text-[10px] text-green-400">${activeCost.toFixed(2)} active now</span>}
                   </div>
@@ -223,6 +229,37 @@ export default function Dashboard() {
             })()}
           </CardContent>
         </Card>
+      )}
+
+      {/* Insights */}
+      {insightsData?.insights && insightsData.insights.length > 0 && (
+        <div className="space-y-2 animate-fade-in-up">
+          {insightsData.insights.map((insight: any, i: number) => (
+            <div
+              key={i}
+              className={`flex items-start gap-3 px-4 py-3 rounded-lg border ${
+                insight.severity === "critical" ? "border-red-500/30 bg-red-500/5" :
+                insight.severity === "warning" ? "border-amber-500/30 bg-amber-500/5" :
+                "border-blue-500/20 bg-blue-500/5"
+              }`}
+            >
+              <span className={`text-sm mt-0.5 ${
+                insight.severity === "critical" ? "text-red-400" :
+                insight.severity === "warning" ? "text-amber-400" :
+                "text-blue-400"
+              }`}>
+                {insight.type === "optimization" ? <Zap className="h-4 w-4" /> :
+                 insight.type === "anomaly" ? <AlertCircle className="h-4 w-4" /> :
+                 insight.type === "budget" ? <BarChart3 className="h-4 w-4" /> :
+                 <Activity className="h-4 w-4" />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium">{insight.title}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{insight.message}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Quick Actions + Session Stats row */}

@@ -383,7 +383,7 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
   };
 }
 
-// --- Route handler ---
+// --- Route handlers ---
 router.get("/api/analytics/costs", async (_req, res) => {
   try {
     const now = Date.now();
@@ -398,6 +398,24 @@ router.get("/api/analytics/costs", async (_req, res) => {
   } catch (err) {
     console.error("[cost-analytics] Failed to build analytics:", (err as Error).message);
     res.status(500).json({ message: "Failed to build cost analytics", error: (err as Error).message });
+  }
+});
+
+/** GET /api/analytics/insights — Cost optimization suggestions, anomaly detection, budget alerts */
+router.get("/api/analytics/insights", async (_req, res) => {
+  try {
+    const { generateInsights } = await import("../scanner/insights");
+    // Get cost data (use cache if available)
+    const now = Date.now();
+    if (!cachedResult || (now - cacheTimestamp) >= CACHE_TTL_MS) {
+      cachedResult = await buildCostAnalytics();
+      cacheTimestamp = now;
+    }
+    const insights = generateInsights(cachedResult);
+    res.json({ insights });
+  } catch (err) {
+    console.error("[insights] Failed:", (err as Error).message);
+    res.status(500).json({ message: "Failed to generate insights" });
   }
 });
 

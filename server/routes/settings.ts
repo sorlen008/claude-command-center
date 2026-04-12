@@ -17,6 +17,7 @@ const SettingsPatchSchema = z.object({
   appName: z.string().trim().min(1, "appName must be a non-empty string").max(50, "appName must be 50 characters or fewer").optional(),
   scanPaths: ScanPathsSchema,
   onboarded: z.boolean().optional(),
+  monthlyBudget: z.number().min(0).max(100000).nullable().optional(),
 });
 
 const router = Router();
@@ -36,6 +37,7 @@ router.patch("/api/settings", (req, res) => {
     patch.scanPaths = { ...current, ...parsed.scanPaths };
   }
   if (parsed.onboarded !== undefined) patch.onboarded = parsed.onboarded;
+  if (parsed.monthlyBudget !== undefined) patch.monthlyBudget = parsed.monthlyBudget;
 
   const updated = storage.updateAppSettings(patch);
   res.json(updated);

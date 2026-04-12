@@ -708,6 +708,7 @@ export interface AppSettings {
   appName: string;
   onboarded: boolean;
   billingMode: BillingMode;
+  monthlyBudget?: number | null;  // USD, null = no budget set
   scanPaths: {
     homeDir: string | null;
     claudeDir: string | null;
@@ -716,4 +717,13 @@ export interface AppSettings {
     extraSkillDirs: string[];
     extraPluginDirs: string[];
   };
+}
+
+export interface CostInsight {
+  type: "optimization" | "anomaly" | "budget" | "duplicate";
+  severity: "info" | "warning" | "critical";
+  title: string;
+  message: string;
+  metric?: number;
+  baseline?: number;
 }
