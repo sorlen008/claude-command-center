@@ -13,7 +13,10 @@ if (!fs.existsSync(dataDir)) {
 const dbPath = path.join(dataDir, "command-center.json");
 const dbTmpPath = dbPath + ".tmp";
 
+export const CURRENT_SCHEMA_VERSION = 1;
+
 export interface DBData {
+  schemaVersion: number;
   entities: Record<string, Entity>;
   relationships: Relationship[];
   markdownBackups: MarkdownBackup[];
@@ -49,6 +52,7 @@ export const defaultAppSettings: AppSettings = {
 
 function defaultData(): DBData {
   return {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     entities: {},
     relationships: [],
     markdownBackups: [],
@@ -69,31 +73,39 @@ function defaultData(): DBData {
   };
 }
 
+/**
+ * Apply sequential migrations to bring old DB data up to CURRENT_SCHEMA_VERSION.
+ * Each step handles one version bump. Registered migrations run in order.
+ */
+function migrate(loaded: Partial<DBData> & { schemaVersion?: number }): DBData {
+  let version = loaded.schemaVersion ?? 0;
+  let out = loaded as DBData;
+
+  // v0 → v1: Backfill all missing fields introduced before schema versioning existed.
+  if (version < 1) {
+    const defaults = defaultData();
+    out = {
+      ...defaults,
+      ...out,
+      schemaVersion: 1,
+      appSettings: { ...defaults.appSettings, ...(out.appSettings || {}) },
+      workflowConfig: { ...defaults.workflowConfig, ...(out.workflowConfig || {}) },
+    };
+    version = 1;
+  }
+
+  // Future migrations go here:
+  // if (version < 2) { ... out.schemaVersion = 2; version = 2; }
+
+  return out;
+}
+
 let data: DBData;
 
 try {
   if (fs.existsSync(dbPath)) {
-    data = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
-    // Ensure all fields exist
-    if (!data.entities) data.entities = {};
-    if (!data.relationships) data.relationships = [];
-    if (!data.markdownBackups) data.markdownBackups = [];
-    if (!data.discoveryCache) data.discoveryCache = {};
-    if (!data.nextRelId) data.nextRelId = 1;
-    if (!data.nextBackupId) data.nextBackupId = 1;
-    if (!data.appSettings) data.appSettings = defaultData().appSettings;
-    if (!data.customNodes) data.customNodes = [];
-    if (!data.customEdges) data.customEdges = [];
-    if (!data.entityOverrides) data.entityOverrides = {};
-    if (!data.sessionSummaries) data.sessionSummaries = {};
-    if (!data.promptTemplates) data.promptTemplates = {};
-    if (!data.workflowConfig) data.workflowConfig = { autoSummarize: false, autoArchiveStale: false, costAlertThreshold: null, autoTagByPath: false };
-    if (!data.sessionNotes) data.sessionNotes = {};
-    if (!data.pinnedSessions) data.pinnedSessions = [];
-    if (!data.decisions) data.decisions = [];
-    if (!data.markdownMeta) data.markdownMeta = {};
-    if (data.appSettings.onboarded === undefined) data.appSettings.onboarded = false;
-    if (!data.appSettings.billingMode) data.appSettings.billingMode = "auto";
+    const loaded = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
+    data = migrate(loaded);
   } else {
     data = defaultData();
   }

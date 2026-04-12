@@ -9,21 +9,16 @@ import { SessionIdSchema, SessionListSchema, IdsArraySchema, DeepSearchSchema, v
 import { TRASH_DIR, MAX_SESSIONS_RESPONSE } from "../config";
 import { deepSearch } from "../scanner/deep-search";
 import { summarizeSession, summarizeBatch } from "../scanner/session-summarizer";
-import { getCostAnalytics, getFileHeatmap, getHealthAnalytics, getSessionCost, getStaleAnalytics } from "../scanner/session-analytics";
+import { getSessionCost } from "../scanner/session-analytics";
 import { getSessionCommits } from "../scanner/commit-linker";
-import { getProjectDashboards } from "../scanner/project-dashboard";
 import { getSessionDiffs } from "../scanner/session-diffs";
-import { generateWeeklyDigest } from "../scanner/weekly-digest";
-import { runAutoWorkflows } from "../scanner/auto-workflows";
 import { getFileTimeline } from "../scanner/file-timeline";
 import { runNLQuery } from "../scanner/nl-query";
 import { getContinuationBrief } from "../scanner/continuation-detector";
 import { extractDecisions } from "../scanner/decision-extractor";
-import { getBashKnowledgeBase, searchBashCommands } from "../scanner/bash-knowledge";
 import { getNerveCenterData } from "../scanner/nerve-center";
 import { delegateToTerminal, delegateToTelegram, delegateToVoice, buildContextPrompt } from "../scanner/session-delegation";
 import { storage } from "../storage";
-import crypto from "crypto";
 
 const router = Router();
 
@@ -244,30 +239,6 @@ router.post("/api/sessions/summarize-batch", async (req: Request, res: Response)
   }
 });
 
-/** GET /api/sessions/analytics/costs — Cost analytics across all sessions */
-router.get("/api/sessions/analytics/costs", (_req: Request, res: Response) => {
-  const sessions = getCachedSessions();
-  res.json(getCostAnalytics(sessions));
-});
-
-/** GET /api/sessions/analytics/files — File heatmap */
-router.get("/api/sessions/analytics/files", (_req: Request, res: Response) => {
-  const sessions = getCachedSessions();
-  res.json(getFileHeatmap(sessions));
-});
-
-/** GET /api/sessions/analytics/health — Session health scores */
-router.get("/api/sessions/analytics/health", (_req: Request, res: Response) => {
-  const sessions = getCachedSessions();
-  res.json(getHealthAnalytics(sessions));
-});
-
-/** GET /api/sessions/analytics/stale — Stale session suggestions */
-router.get("/api/sessions/analytics/stale", (_req: Request, res: Response) => {
-  const sessions = getCachedSessions();
-  res.json(getStaleAnalytics(sessions));
-});
-
 /** POST /api/sessions/context-loader — Generate context prompt for a project */
 router.post("/api/sessions/context-loader", (req: Request, res: Response) => {
   const project = (req.body as { project?: string })?.project;
@@ -316,96 +287,6 @@ router.post("/api/sessions/context-loader", (req: Request, res: Response) => {
   tokensEstimate = Math.round(prompt.length / 4);
 
   res.json({ prompt, sessionsUsed: used, tokensEstimate });
-});
-
-/** GET /api/sessions/analytics/projects — Project dashboards */
-router.get("/api/sessions/analytics/projects", (_req: Request, res: Response) => {
-  const sessions = getCachedSessions();
-  res.json(getProjectDashboards(sessions));
-});
-
-/** GET /api/sessions/analytics/digest — Weekly digest */
-router.get("/api/sessions/analytics/digest", (_req: Request, res: Response) => {
-  const sessions = getCachedSessions();
-  res.json(generateWeeklyDigest(sessions));
-});
-
-/** GET /api/sessions/prompts — List prompt templates */
-router.get("/api/sessions/prompts", (_req: Request, res: Response) => {
-  res.json(storage.getPromptTemplates());
-});
-
-/** POST /api/sessions/prompts — Create prompt template */
-router.post("/api/sessions/prompts", (req: Request, res: Response) => {
-  const body = req.body as { name?: string; description?: string; prompt?: string; project?: string; tags?: string[] };
-  if (!body.name || !body.prompt) return res.status(400).json({ message: "name and prompt are required" });
-
-  const template = {
-    id: crypto.randomUUID(),
-    name: body.name.slice(0, 200),
-    description: (body.description || "").slice(0, 500),
-    prompt: body.prompt.slice(0, 5000),
-    project: body.project?.slice(0, 200),
-    tags: (body.tags || []).slice(0, 10).map(t => String(t).slice(0, 50)),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    usageCount: 0,
-  };
-
-  storage.upsertPromptTemplate(template);
-  res.json(template);
-});
-
-/** PATCH /api/sessions/prompts/:id — Update prompt template */
-router.patch("/api/sessions/prompts/:id", (req: Request, res: Response) => {
-  const id = String(req.params.id);
-  const existing = storage.getPromptTemplate(id);
-  if (!existing) return res.status(404).json({ message: "Template not found" });
-
-  const body = req.body as Partial<{ name: string; description: string; prompt: string; tags: string[]; isFavorite: boolean }>;
-  const updated = {
-    ...existing,
-    ...(body.name !== undefined && { name: body.name.slice(0, 200) }),
-    ...(body.description !== undefined && { description: body.description.slice(0, 500) }),
-    ...(body.prompt !== undefined && { prompt: body.prompt.slice(0, 5000) }),
-    ...(body.tags !== undefined && { tags: body.tags.slice(0, 10).map(t => String(t).slice(0, 50)) }),
-    ...(body.isFavorite !== undefined && { isFavorite: body.isFavorite }),
-    updatedAt: new Date().toISOString(),
-  };
-
-  storage.upsertPromptTemplate(updated);
-  res.json(updated);
-});
-
-/** DELETE /api/sessions/prompts/:id — Delete prompt template */
-router.delete("/api/sessions/prompts/:id", (req: Request, res: Response) => {
-  const id = String(req.params.id);
-  if (!storage.getPromptTemplate(id)) return res.status(404).json({ message: "Template not found" });
-  storage.deletePromptTemplate(id);
-  res.json({ message: "Deleted" });
-});
-
-/** GET /api/sessions/workflows — Get workflow config */
-router.get("/api/sessions/workflows", (_req: Request, res: Response) => {
-  res.json(storage.getWorkflowConfig());
-});
-
-/** PATCH /api/sessions/workflows — Update workflow config */
-router.patch("/api/sessions/workflows", (req: Request, res: Response) => {
-  const body = req.body as Partial<import("@shared/types").WorkflowConfig>;
-  const updated = storage.updateWorkflowConfig(body);
-  res.json(updated);
-});
-
-/** POST /api/sessions/workflows/run — Run auto-workflows manually */
-router.post("/api/sessions/workflows/run", async (_req: Request, res: Response) => {
-  try {
-    const sessions = getCachedSessions();
-    const result = await runAutoWorkflows(sessions);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
-  }
 });
 
 /** POST /api/sessions/pin/:id — Toggle pin */
@@ -467,20 +348,6 @@ router.post("/api/sessions/decisions/extract/:id", async (req: Request, res: Res
   } catch (err) {
     res.status(500).json({ message: (err as Error).message });
   }
-});
-
-/** GET /api/sessions/analytics/bash — Bash command knowledge base */
-router.get("/api/sessions/analytics/bash", (_req: Request, res: Response) => {
-  const sessions = getCachedSessions();
-  res.json(getBashKnowledgeBase(sessions));
-});
-
-/** GET /api/sessions/analytics/bash/search — Search bash commands */
-router.get("/api/sessions/analytics/bash/search", (req: Request, res: Response) => {
-  const q = qstr(req.query.q);
-  if (!q) return res.status(400).json({ message: "q parameter required" });
-  const sessions = getCachedSessions();
-  res.json(searchBashCommands(sessions, q));
 });
 
 /** GET /api/sessions/nerve-center — Operations nerve center */

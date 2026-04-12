@@ -3,41 +3,15 @@ import { createReadStream } from "fs";
 import { createInterface } from "readline";
 import { getCachedSessions } from "../scanner/session-scanner";
 import { decodeProjectKey } from "../scanner/utils";
+import { getPricing, computeCost } from "../scanner/pricing";
 
 const router = Router();
 
-// --- Pricing per million tokens (USD) ---
-const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
-  opus:   { input: 15,   output: 75,  cacheRead: 15 * 0.1,   cacheWrite: 15 * 1.25 },
-  sonnet: { input: 3,    output: 15,  cacheRead: 3 * 0.1,    cacheWrite: 3 * 1.25 },
-  haiku:  { input: 0.80, output: 4,   cacheRead: 0.80 * 0.1, cacheWrite: 0.80 * 1.25 },
-};
-
 function getModelFamily(model: string): string {
   const lower = model.toLowerCase();
-  for (const key of Object.keys(MODEL_PRICING)) {
-    if (lower.includes(key)) return key;
-  }
-  return "sonnet"; // default
-}
-
-function getPricing(model: string) {
-  return MODEL_PRICING[getModelFamily(model)] || MODEL_PRICING.sonnet;
-}
-
-function computeCost(
-  pricing: { input: number; output: number; cacheRead: number; cacheWrite: number },
-  inputTokens: number,
-  outputTokens: number,
-  cacheReadTokens: number,
-  cacheWriteTokens: number,
-): number {
-  return (
-    (inputTokens / 1_000_000) * pricing.input +
-    (outputTokens / 1_000_000) * pricing.output +
-    (cacheReadTokens / 1_000_000) * pricing.cacheRead +
-    (cacheWriteTokens / 1_000_000) * pricing.cacheWrite
-  );
+  if (lower.includes("opus")) return "opus";
+  if (lower.includes("haiku")) return "haiku";
+  return "sonnet";
 }
 
 // --- Error classification ---
@@ -201,7 +175,6 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
   cutoffDate.setDate(cutoffDate.getDate() - 30);
   const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
-  // Initialize daily buckets for last 30 days
   const dailyMap: Record<string, {
     inputTokens: number;
     outputTokens: number;
@@ -216,7 +189,6 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
     dailyMap[dateKey] = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cost: 0 };
   }
 
-  // Per-model aggregates
   const modelMap: Record<string, {
     inputTokens: number;
     outputTokens: number;
@@ -224,7 +196,6 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
     sessionSet: Set<string>;
   }> = {};
 
-  // Per-project aggregates
   const projectMap: Record<string, {
     inputTokens: number;
     outputTokens: number;
@@ -232,21 +203,19 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
     sessionSet: Set<string>;
   }> = {};
 
-  // Totals
   let totalCost = 0;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let totalCacheReadTokens = 0;
   let totalCacheWriteTokens = 0;
 
-  // Error aggregation
   const errorTypeMap: Record<string, {
     count: number;
     lastSeen: string;
     example: string;
   }> = {};
 
-  // Process sessions in parallel batches to avoid overwhelming the filesystem
+  // Batched to avoid overwhelming the filesystem with concurrent reads
   const BATCH_SIZE = 20;
   for (let i = 0; i < sessions.length; i += BATCH_SIZE) {
     const batch = sessions.slice(i, i + BATCH_SIZE);
@@ -268,14 +237,12 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
         const pricing = getPricing(tk.model);
         const cost = computeCost(pricing, tk.inputTokens, tk.outputTokens, tk.cacheReadTokens, tk.cacheWriteTokens);
 
-        // Totals (all time within files)
         totalInputTokens += tk.inputTokens;
         totalOutputTokens += tk.outputTokens;
         totalCacheReadTokens += tk.cacheReadTokens;
         totalCacheWriteTokens += tk.cacheWriteTokens;
         totalCost += cost;
 
-        // Daily (only last 30 days)
         const dateKey = tk.timestamp.slice(0, 10);
         if (dateKey >= cutoffStr && dailyMap[dateKey]) {
           dailyMap[dateKey].inputTokens += tk.inputTokens;
@@ -285,7 +252,6 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
           dailyMap[dateKey].cost += cost;
         }
 
-        // Per-model
         if (!modelMap[family]) {
           modelMap[family] = { inputTokens: 0, outputTokens: 0, cost: 0, sessionSet: new Set() };
         }
@@ -294,7 +260,6 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
         modelMap[family].cost += cost;
         modelFamiliesSeen.add(family);
 
-        // Per-project
         if (!projectMap[projectPath]) {
           projectMap[projectPath] = { inputTokens: 0, outputTokens: 0, cost: 0, sessionSet: new Set() };
         }
@@ -303,17 +268,14 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
         projectMap[projectPath].cost += cost;
       }
 
-      // Count session once per model family
       Array.from(modelFamiliesSeen).forEach((family) => {
         modelMap[family].sessionSet.add(session.id);
       });
 
-      // Count session once per project (if it had any tokens)
       if (result.tokens.length > 0) {
         projectMap[projectPath].sessionSet.add(session.id);
       }
 
-      // Aggregate errors
       for (const err of result.errors) {
         const errType = classifyError(err.text);
         if (!errorTypeMap[errType]) {
@@ -328,7 +290,6 @@ async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
     }
   }
 
-  // Build daily costs array sorted by date
   const dailyCosts = Object.entries(dailyMap)
     .map(([date, data]) => ({ date, ...data, cost: Math.round(data.cost * 1000) / 1000 }))
     .sort((a, b) => a.date.localeCompare(b.date));

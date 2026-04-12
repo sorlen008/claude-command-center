@@ -223,6 +223,26 @@ export interface ConfigEntity extends Entity {
   };
 }
 
+/**
+ * Discriminated union of all entity subtypes.
+ * Use this instead of Entity when you need type narrowing on data fields.
+ * Example:
+ *   const t = asTypedEntity(e);
+ *   if (t.type === "mcp") t.data.transport // fully typed
+ */
+export type TypedEntity =
+  | ProjectEntity
+  | MCPEntity
+  | SkillEntity
+  | PluginEntity
+  | MarkdownEntity
+  | ConfigEntity;
+
+/** Narrow a bare Entity to its TypedEntity variant via the `type` discriminator. */
+export function asTypedEntity(e: Entity): TypedEntity {
+  return e as TypedEntity;
+}
+
 export interface GraphNode {
   id: string;
   type: GraphNodeType;

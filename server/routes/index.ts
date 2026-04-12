@@ -8,6 +8,9 @@ import discoveryRouter from "./discovery";
 import configRouter from "./config";
 import scannerRouter from "./scanner";
 import sessionsRouter from "./sessions";
+import sessionAnalyticsRouter from "./session-analytics";
+import sessionPromptsRouter from "./session-prompts";
+import sessionWorkflowsRouter from "./session-workflows";
 import agentsRouter from "./agents";
 import liveRouter from "./live";
 import updateRouter from "./update";
@@ -46,17 +49,14 @@ function openPath(p: string): void {
 }
 
 export async function registerRoutes(server: Server, app: Express): Promise<void> {
-  // Health check
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Watcher change log
   app.get("/api/watcher/changes", (_req, res) => {
     res.json(getRecentChanges());
   });
 
-  // Register all route modules
   app.use(entitiesRouter);
   app.use(projectsRouter);
   app.use(markdownRouter);
@@ -64,6 +64,11 @@ export async function registerRoutes(server: Server, app: Express): Promise<void
   app.use(discoveryRouter);
   app.use(configRouter);
   app.use(scannerRouter);
+  // Specific session sub-routers must mount BEFORE sessionsRouter
+  // so their paths are matched before the /:id catch-all in sessions.ts
+  app.use(sessionAnalyticsRouter);
+  app.use(sessionPromptsRouter);
+  app.use(sessionWorkflowsRouter);
   app.use(sessionsRouter);
   app.use(agentsRouter);
   app.use(liveRouter);
