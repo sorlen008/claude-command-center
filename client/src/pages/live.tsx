@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useLiveData } from "@/hooks/use-agents";
 import { useTogglePin } from "@/hooks/use-sessions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +25,17 @@ import {
   Zap,
   ArrowRight,
   Pin,
+  Minimize2,
+  Copy,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/empty-state";
 import type { ActiveSession, AgentExecution } from "@shared/types";
 import { relativeTime as _relativeTime, shortModel, getTypeColor } from "@/lib/utils";
@@ -98,11 +109,21 @@ function getStatusConfig(status?: string) {
 function SessionContextGuide({ show, onToggle }: { show: boolean; onToggle: () => void }) {
   return (
     <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5">
-      <button onClick={onToggle} className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors">
-        <HelpCircle className="h-4 w-4" />
-        Context & Session Tips
-        {show ? <ChevronDown className="h-3.5 w-3.5 ml-auto" /> : <ChevronRight className="h-3.5 w-3.5 ml-auto" />}
-      </button>
+      <div className="flex items-center">
+        <button onClick={onToggle} className="flex-1 flex items-center gap-2 px-4 py-3 text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors">
+          <HelpCircle className="h-4 w-4" />
+          Context & Session Tips
+          {show ? <ChevronDown className="h-3.5 w-3.5 ml-auto" /> : <ChevronRight className="h-3.5 w-3.5 ml-auto" />}
+        </button>
+        <a
+          href="/help#live"
+          onClick={(e) => e.stopPropagation()}
+          className="text-[11px] text-cyan-400/70 hover:text-cyan-300 hover:underline px-3 py-3 shrink-0"
+          title="Open the full Live View guide in Help Center"
+        >
+          Full guide →
+        </a>
+      </div>
       {show && (
         <div className="px-4 pb-4 space-y-4 text-sm border-t border-cyan-500/10 pt-3">
 
@@ -218,10 +239,13 @@ function SessionContextGuide({ show, onToggle }: { show: boolean; onToggle: () =
 export default function Live() {
   const { data, isLoading, dataUpdatedAt, refetch } = useLiveData();
   const togglePin = useTogglePin();
+  const [, setLocation] = useLocation();
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [showAgents, setShowAgents] = useState(false);
+  const [compactTarget, setCompactTarget] = useState<ActiveSession | null>(null);
+  const [compactCopied, setCompactCopied] = useState(false);
   const tick = useTick(1000);
   const isCompact = new URLSearchParams(window.location.search).get("compact") === "true";
   const prevSessionIdsRef = useRef<Set<string> | null>(null);
@@ -255,6 +279,15 @@ export default function Live() {
     navigator.clipboard.writeText(`claude --resume ${sessionId}`);
     setCopiedId(sessionId);
     setTimeout(() => setCopiedId(null), 1500);
+  }, []);
+
+  const handleConfirmCompact = useCallback(() => {
+    navigator.clipboard.writeText("/compact");
+    setCompactCopied(true);
+    setTimeout(() => {
+      setCompactCopied(false);
+      setCompactTarget(null);
+    }, 1200);
   }, []);
 
   // Countdown to next refresh
@@ -451,6 +484,8 @@ export default function Live() {
                   session={session}
                   index={i}
                   tick={tick}
+                  onCompactClick={() => setCompactTarget(session)}
+                  onOpenInSessions={() => setLocation(`/sessions?session=${session.sessionId}`)}
                   isNew={newSessionIds.has(session.sessionId)}
                   copiedId={copiedId}
                   onCopyResume={handleCopyResume}
@@ -514,6 +549,66 @@ export default function Live() {
           </div>
         </div>
       </div>
+
+      {/* Compact context dialog */}
+      <Dialog open={!!compactTarget} onOpenChange={(open) => { if (!open) setCompactTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Minimize2 className="h-4 w-4 text-purple-400" />
+              Compact Conversation Context
+            </DialogTitle>
+            <DialogDescription className="sr-only">Explanation of Claude Code's /compact command</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Compacting asks Claude to replace the older messages in the current session with a short summary, freeing up context window space so the session can keep running.
+            </p>
+            <div className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <Check className="h-3.5 w-3.5 text-green-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">Keeps recent messages and current task intact</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Check className="h-3.5 w-3.5 text-green-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">Preserves file references and key decisions</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">Older detail (tool outputs, early back-and-forth) is condensed and may lose nuance</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">Happens inside the running Claude session — cannot be triggered remotely by Command Center</span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+              <p className="text-xs text-foreground/90 mb-1.5">
+                <span className="font-semibold text-purple-400">How to run it:</span> switch to your active Claude Code terminal and type:
+              </p>
+              <code className="block text-xs font-mono bg-background/60 rounded px-2 py-1 text-purple-300">/compact</code>
+              {compactTarget?.contextUsage && (
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  This session is at <span className="font-mono tabular-nums text-foreground">{compactTarget.contextUsage.percentage}%</span> context.
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="flex-row justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCompactTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
+              onClick={handleConfirmCompact}
+            >
+              {compactCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {compactCopied ? "Copied!" : "Copy /compact"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -526,6 +621,8 @@ function ActiveSessionCard({
   copiedId,
   onCopyResume,
   onTogglePin,
+  onCompactClick,
+  onOpenInSessions,
 }: {
   session: ActiveSession;
   index: number;
@@ -534,6 +631,8 @@ function ActiveSessionCard({
   copiedId: string | null;
   onCopyResume: (id: string) => void;
   onTogglePin: (id: string) => void;
+  onCompactClick: () => void;
+  onOpenInSessions: () => void;
 }) {
   const title = session.slug || shortSummary(session.firstMessage, 5) || session.sessionId.slice(0, 12) + "...";
   const lastMsg = session.lastMessage ? shortSummary(session.lastMessage, 12) : null;
@@ -543,8 +642,17 @@ function ActiveSessionCard({
 
   return (
     <Card
-      className={`animate-fade-in-up ${sc.cardClass} ${sc.borderClass ? `border ${sc.borderClass}` : ""} ${isNew ? "ring-2 ring-green-500/40 shadow-[0_0_20px_rgba(34,197,94,0.2)]" : ""}`}
+      className={`animate-fade-in-up cursor-pointer hover:bg-accent/10 transition-colors ${sc.cardClass} ${sc.borderClass ? `border ${sc.borderClass}` : ""} ${isNew ? "ring-2 ring-green-500/40 shadow-[0_0_20px_rgba(34,197,94,0.2)]" : ""}`}
       style={{ animationDelay: `${index * 50}ms` }}
+      onClick={(e) => {
+        // Don't navigate when the click landed on a button, link, or any
+        // interactive control inside the card. The card body itself is the
+        // target — click anywhere "neutral" to open the session in Sessions.
+        const t = e.target as HTMLElement;
+        if (t.closest("button") || t.closest("a") || t.closest("input")) return;
+        onOpenInSessions();
+      }}
+      title="Click to open in Sessions"
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
@@ -657,7 +765,19 @@ function ActiveSessionCard({
             {/* Context usage */}
             {session.contextUsage && (
               <div className="mt-2 flex items-center gap-2" title={`${session.contextUsage.tokensUsed.toLocaleString()} / ${session.contextUsage.maxTokens.toLocaleString()} tokens (${session.contextUsage.percentage}%)`}>
-                <span className="text-[10px] text-muted-foreground/60 shrink-0 w-12">Context</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onCompactClick(); }}
+                    className="h-5 px-1.5 inline-flex items-center gap-1 rounded-md border border-purple-500/40 bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 hover:border-purple-400/60 hover:text-purple-200 transition-colors"
+                    title="Compact this conversation's context — copies /compact to your clipboard"
+                    aria-label="Compact context"
+                  >
+                    <Minimize2 className="h-3 w-3" />
+                    <span className="text-[10px] font-medium leading-none">Compact</span>
+                  </button>
+                  <span className="text-[10px] text-muted-foreground/60">Context</span>
+                </div>
                 <div className="flex-1 h-2 rounded-full bg-muted/50 overflow-hidden">
                   <div
                     className="h-full rounded-full context-bar-fill"

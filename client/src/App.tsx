@@ -33,6 +33,7 @@ const Stats = lazy(() => import("@/pages/stats"));
 const MessageHistory = lazy(() => import("@/pages/message-history"));
 const APIs = lazy(() => import("@/pages/apis"));
 const Prompts = lazy(() => import("@/pages/prompts"));
+const HelpCenter = lazy(() => import("@/pages/help"));
 import NotFound from "@/pages/not-found";
 
 function PageLoader() {
@@ -82,6 +83,7 @@ function Router() {
             <Route path="/messages" component={MessageHistory} />
             <Route path="/apis" component={APIs} />
             <Route path="/prompts" component={Prompts} />
+            <Route path="/help" component={HelpCenter} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>

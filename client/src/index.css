@@ -251,10 +251,36 @@ pre code {
   border-radius: 0.5rem;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   cursor: pointer;
-  will-change: opacity;
 }
 .graph-node:hover {
   box-shadow: 0 4px 12px rgba(59,130,246,0.15);
+}
+/* Pan/zoom performance: while the user is actively panning or zooming, hide
+   node/edge content entirely so the compositor only has to transform the
+   viewport container. Without this, the GPU has to recomposite every node
+   layer (icons, text, shadows) every frame — which kills FPS regardless of
+   total data size. A single onMove heartbeat resets a 200ms removal timer on
+   every tick (drag pan, wheel zoom, pinch) so the class stays on for as long
+   as movement is happening and clears 200ms after the last tick. */
+.react-flow.is-panning .react-flow__node,
+.react-flow.is-panning .react-flow__edge {
+  visibility: hidden;
+}
+.react-flow.is-panning .react-flow__handle {
+  display: none;
+}
+.react-flow.is-panning .react-flow__pane {
+  cursor: grabbing;
+}
+
+/* When the graph page is mounted, opt out of always-on compositor effects
+   that would compete with pan/zoom for GPU cycles. See graph.tsx useEffect
+   that toggles the `graph-active` body class. */
+body.graph-active #root::before { animation: none !important; }
+body.graph-active .bg-card\/50.backdrop-blur {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: hsl(var(--card)) !important;
 }
 
 /* Graph hover dimming is handled via injected <style> tag — no class toggling */
@@ -636,12 +662,12 @@ pre code {
   to { background-position: 200% 0; }
 }
 
-/* Floating background elements for graph */
+/* Floating background elements for graph — static (no animation) to keep
+   the compositor free for graph pan/zoom. */
 .floating-bg-circle {
   position: absolute;
   border-radius: 50%;
   background: radial-gradient(circle, hsl(var(--muted-foreground) / 0.03), transparent 70%);
-  animation: float 8s ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -651,10 +677,9 @@ pre code {
   filter: drop-shadow(0 0 6px currentColor);
 }
 
-/* Graph node entrance stagger */
-.graph-node-enter {
-  animation: fade-in-up 0.3s ease-out both;
-}
+/* Graph node entrance stagger — disabled. With onlyRenderVisibleElements,
+   nodes mount/unmount during pan; re-triggering fade-in every time tanks FPS. */
+.graph-node-enter { /* no-op */ }
 
 /* Search highlight mark */
 mark {

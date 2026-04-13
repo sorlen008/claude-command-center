@@ -1,7 +1,7 @@
 import { memo } from "react";
 import {
   BaseEdge,
-  getSmoothStepPath,
+  getBezierPath,
   type EdgeProps,
 } from "@xyflow/react";
 
@@ -16,14 +16,16 @@ function AnimatedEdgeComponent({
   style = {},
   markerEnd,
 }: EdgeProps) {
-  const [edgePath] = getSmoothStepPath({
+  // Bezier curves bundle naturally at shared endpoints and produce far fewer
+  // visual crossings than smooth-step right-angle routes at dense node counts.
+  const [edgePath] = getBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
     targetY,
     targetPosition,
-    borderRadius: 12,
+    curvature: 0.35,
   });
 
   return (
@@ -31,11 +33,7 @@ function AnimatedEdgeComponent({
       id={id}
       path={edgePath}
       markerEnd={markerEnd}
-      style={{
-        ...style,
-        strokeDasharray: style?.strokeDasharray || "8 4",
-        strokeDashoffset: 0,
-      }}
+      style={style}
       className="edge-animated"
     />
   );

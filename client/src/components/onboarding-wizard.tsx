@@ -240,7 +240,7 @@ function StepReady() {
       <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 w-full">
         <SlidersHorizontal className="h-4 w-4 text-blue-400 shrink-0" />
         <p className="text-xs text-muted-foreground">
-          Want to re-run this later? Go to <span className="font-semibold text-blue-400">Settings</span> and click <span className="font-semibold text-blue-400">Run Onboarding</span>
+          Want to re-run this later? Go to <span className="font-semibold text-blue-400">Settings</span> and click <span className="font-semibold text-blue-400">Run Onboarding</span>. Or open the <a href="/help#first-5-minutes" className="font-semibold text-blue-400 hover:underline">Help Center</a> for the first-five-minutes walkthrough.
         </p>
       </div>
     </div>

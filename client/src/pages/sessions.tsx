@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate } from "@/hooks/use-sessions";
 import { useAppSettings } from "@/hooks/use-settings";
 import { apiRequest } from "@/lib/queryClient";
@@ -65,9 +65,28 @@ export default function Sessions() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
 
-  // Read project filter from URL
+  // Read project filter and deep-link session ID from URL
   const urlParams = new URLSearchParams(window.location.search);
   const [projectFilter, setProjectFilter] = useState(urlParams.get("project") || "");
+  // If ?session=<id> is in the URL, expand that session on mount and scroll
+  // it into view. Used by Live View to navigate to a specific session.
+  useEffect(() => {
+    const sid = urlParams.get("session");
+    if (sid) {
+      setExpanded(sid);
+      // Strip the param so refreshes don't re-expand it
+      const next = new URLSearchParams(window.location.search);
+      next.delete("session");
+      const qs = next.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+      // Scroll the expanded card into view after the next paint
+      setTimeout(() => {
+        const el = document.querySelector(`[data-session-id="${sid}"]`);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 200);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [sort, order] = sortKey.split(":") as [string, string];
   const { data, isLoading } = useSessions({ q: search || undefined, sort, order, hideEmpty, activeOnly, project: projectFilter || undefined, page, limit: PAGE_SIZE });
@@ -1399,7 +1418,8 @@ function SessionCard({
 
   return (
     <Card
-      className={`group card-hover animate-fade-in-up cursor-pointer ${s.isEmpty ? "opacity-50" : ""} ${isSelected ? "ring-1 ring-blue-500/50" : ""}`}
+      data-session-id={s.id}
+      className={`group card-hover animate-fade-in-up cursor-pointer ${s.isEmpty ? "opacity-50" : ""} ${isSelected ? "ring-1 ring-blue-500/50" : ""} ${isExpanded ? "ring-2 ring-blue-500/60 shadow-[0_0_20px_rgba(59,130,246,0.15)]" : ""}`}
       style={{ animationDelay: `${i * 30}ms` }}
       onClick={() => onToggleExpand(s.id)}
     >

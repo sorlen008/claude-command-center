@@ -5,6 +5,18 @@ import { entityConfig } from "@/components/entity-badge";
 import { FolderOpen, MessageSquare, Database, Globe, Cloud, Container, Server, Layers, Box } from "lucide-react";
 import type { EntityType, CustomNodeSubType } from "@shared/types";
 
+// When the graph is laid out top-to-bottom (TB) edges come in from the top and
+// leave from the bottom. When laid out left-to-right (LR) they come in from the
+// left and leave from the right. Matching the handles to the layout direction
+// eliminates the "lines everywhere" tangling that happens when handles are
+// fixed to Top/Bottom but dagre routes edges horizontally.
+function getHandlePositions(data: Record<string, unknown>): { target: Position; source: Position } {
+  const dir = data.layoutDir === "LR" ? "LR" : "TB";
+  return dir === "LR"
+    ? { target: Position.Left, source: Position.Right }
+    : { target: Position.Top, source: Position.Bottom };
+}
+
 const entityColors: Record<string, string> = {
   project: "#3b82f6",
   mcp: "#22c55e",
@@ -35,16 +47,19 @@ function ProjectNodeComponent({ data }: { data: Record<string, unknown> }) {
   const connectionCount = data.connectionCount as number | undefined;
   const health = data.health as string;
   const isSearchMatch = data.searchMatch as boolean | undefined;
+  const { target, source } = getHandlePositions(data);
 
   return (
     <div
-      className="graph-node graph-node-enter"
+      className="graph-node"
       style={{
         borderTop: `3px solid ${color}`,
-        boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
+        boxShadow: data.isFocus
+          ? `0 0 0 2px #a855f7, 0 0 20px #a855f780`
+          : isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="target" position={target} className="!bg-transparent !border-0 !w-3 !h-3" />
       <div className="flex items-center gap-2.5 px-4 py-3 min-w-[240px]">
         <div
           className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
@@ -72,7 +87,7 @@ function ProjectNodeComponent({ data }: { data: Record<string, unknown> }) {
           </Badge>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="source" position={source} className="!bg-transparent !border-0 !w-3 !h-3" />
     </div>
   );
 }
@@ -83,16 +98,19 @@ function EntityNodeComponent({ data }: { data: Record<string, unknown> }) {
   const config = entityConfig[nodeType];
   const Icon = config?.icon || FolderOpen;
   const isSearchMatch = data.searchMatch as boolean | undefined;
+  const { target, source } = getHandlePositions(data);
 
   return (
     <div
-      className="graph-node graph-node-enter"
+      className="graph-node"
       style={{
         borderLeft: `3px solid ${color}`,
-        boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
+        boxShadow: data.isFocus
+          ? `0 0 0 2px #a855f7, 0 0 20px #a855f780`
+          : isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="target" position={target} className="!bg-transparent !border-0 !w-3 !h-3" />
       <div className="flex items-center gap-2 px-3 py-2 min-w-[160px]">
         <div
           className="flex items-center justify-center w-6 h-6 rounded-md shrink-0"
@@ -102,7 +120,7 @@ function EntityNodeComponent({ data }: { data: Record<string, unknown> }) {
         </div>
         <span className="text-xs text-foreground truncate">{data.label as string}</span>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="source" position={source} className="!bg-transparent !border-0 !w-3 !h-3" />
     </div>
   );
 }
@@ -110,21 +128,24 @@ function EntityNodeComponent({ data }: { data: Record<string, unknown> }) {
 function SessionNodeComponent({ data }: { data: Record<string, unknown> }) {
   const color = "#06b6d4";
   const isSearchMatch = data.searchMatch as boolean | undefined;
+  const { target, source } = getHandlePositions(data);
 
   return (
     <div
-      className="graph-node graph-node-enter"
+      className="graph-node"
       style={{
         borderLeft: `3px solid ${color}`,
-        boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
+        boxShadow: data.isFocus
+          ? `0 0 0 2px #a855f7, 0 0 20px #a855f780`
+          : isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="target" position={target} className="!bg-transparent !border-0 !w-3 !h-3" />
       <div className="flex items-center gap-1.5 px-2.5 py-1.5 min-w-[120px] max-w-[160px]">
         <MessageSquare className="w-3 h-3 shrink-0" style={{ color }} />
         <span className="text-[11px] text-foreground truncate">{data.label as string}</span>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="source" position={source} className="!bg-transparent !border-0 !w-3 !h-3" />
     </div>
   );
 }
@@ -134,17 +155,20 @@ function CustomNodeComponent({ data }: { data: Record<string, unknown> }) {
   const subType = (data.subType as CustomNodeSubType) || "other";
   const Icon = customSubTypeIcons[subType] || Box;
   const isSearchMatch = data.searchMatch as boolean | undefined;
-  const source = data.source as string | undefined;
+  const sourceLabel = data.source as string | undefined;
+  const { target, source: sourceHandle } = getHandlePositions(data);
 
   return (
     <div
-      className="graph-node graph-node-enter"
+      className="graph-node"
       style={{
         borderLeft: `3px solid ${color}`,
-        boxShadow: isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
+        boxShadow: data.isFocus
+          ? `0 0 0 2px #a855f7, 0 0 20px #a855f780`
+          : isSearchMatch ? `0 0 0 2px ${color}, 0 0 12px ${color}40` : undefined,
       }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="target" position={target} className="!bg-transparent !border-0 !w-3 !h-3" />
       <div className="flex items-center gap-2 px-3 py-2 min-w-[160px]">
         <div
           className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
@@ -158,11 +182,11 @@ function CustomNodeComponent({ data }: { data: Record<string, unknown> }) {
             <p className="text-[9px] text-muted-foreground truncate max-w-[140px]">{data.description}</p>
           )}
         </div>
-        {source && (
+        {sourceLabel && (
           <span className="text-[8px] text-muted-foreground/60 shrink-0">{subType}</span>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-3 !h-3" />
+      <Handle type="source" position={sourceHandle} className="!bg-transparent !border-0 !w-3 !h-3" />
     </div>
   );
 }

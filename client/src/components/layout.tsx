@@ -30,6 +30,7 @@ import {
   BarChart3,
   Globe,
   Sparkles,
+  LifeBuoy,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
@@ -63,6 +64,7 @@ const navSections = [
       { path: "/activity", label: "Activity & Discover", icon: Activity, countKey: null },
       { path: "/stats", label: "Analytics & Cost", icon: BarChart3, countKey: null },
       { path: "/settings", label: "Settings", icon: SlidersHorizontal, countKey: "config" as const },
+      { path: "/help", label: "Help Center", icon: LifeBuoy, countKey: null },
     ],
   },
 ];
