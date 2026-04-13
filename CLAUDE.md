@@ -6,7 +6,7 @@
 npm install
 npm run dev        # starts on http://localhost:5100
 npm run check      # TypeScript type-check
-npm test           # run all tests (132+ tests)
+npm test           # run all tests (1800+ tests)
 ```
 
 ## Architecture
@@ -101,7 +101,7 @@ When adding integrations with external services:
 
 ## Tests
 
-- **1350+ unit tests** covering parsers, routes, storage, validation
+- **1800+ unit tests** covering parsers, routes, storage, validation, client pages
 - **`new-user-safety.test.ts`** — automated guardrail that scans all source files for:
   - Hardcoded user paths (both decoded `C:/Users/...` and encoded `C--Users-...`)
   - Phone numbers / PII

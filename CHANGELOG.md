@@ -7,6 +7,161 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-04-13
+
+### Added
+- **Help Center v2** — dedicated `/help` page with four tabs (First 5 Minutes, Browse, Glossary, Cheat Sheet), 107 topics across 15 categories, per-topic beginner/intermediate/advanced filter, 49-term glossary, URL-hash deep-linking (`/help#live:2`, `/help#glossary`, `/help#q=compact`)
+- **Graph Focus Lens** — default view shows only the focus node + its neighborhood (up to 40 nodes) in a radial layout; dramatically reduces visual tangling on dense graphs (tested on 263-node / 1166-edge datasets)
+- **Focus picker dropdown** — searchable Command palette listing every entity grouped by type, sorted by connection count, so power users can jump to any node from the full graph without leaving Focus mode
+- **Live → Sessions deep link** — click any Live session card body to navigate to `/sessions?session=<uuid>` with the target session pre-expanded and scrolled into view
+- **Compact button on Live cards** — visible purple pill left of the Context bar, opens an explanatory dialog and copies `/compact` to clipboard
+- **Cross-links** — onboarding wizard final step and Live page Session Context Guide both link into Help Center
+
+### Changed
+- **Graph pan/zoom overhaul** — removed `fitView={true}` prop that fired on every re-render; replaced `onMoveStart`/`onMoveEnd` with `onMove` heartbeat that closes the wheel-zoom gap; hover dim now uses 1-hop neighbors only (full BFS kept for click → blast radius); swapped `getSmoothStepPath` → `getBezierPath` for cleaner edge bundling
+- **Dynamic node handles** — nodes now orient handles based on layout direction (TB → Top/Bottom, LR → Left/Right), fixing edge routing chaos in LR mode
+- **Graph route CSS scoping** — `graph-active` body class disables `backdrop-filter` blur and the gradient-drift root animation on the graph route only, freeing compositor cycles for pan/zoom
+
+## [1.26.0] - 2026-04-13
+
+### Changed
+- **Tech debt cleanup** — consolidated model pricing to a single source of truth (`server/scanner/pricing.ts`), added DB schema versioning with `migrate()` function, split `sessions.ts` god router into analytics/prompts/workflows sub-routers, pruned 45+ comments that restated WHAT code did, added `TypedEntity` discriminated union (non-breaking additive type)
+- **Security fixes** — Windows `session-delegation.ts` now sanitizes `cwd` before shell spawn; `MAX_BATCH_SUMMARIZE=10` hard cap on summarize-batch DoS; `IdsArraySchema` validates UUIDs via `SessionIdSchema`; `ai-suggest.ts` removes raw prompts from error responses and adds `--no-session-persistence`
+
+## [1.25.0] - 2026-04-12
+
+### Added
+- **Skill category auto-inference** — skills are now grouped by inferred category (devops, quality, docs, ai, data, etc.) using a data-driven regex rule table in `server/scanner/skill-scanner.ts`; toggle grouping on/off with a toolbar button
+- **Summarize dropdown** — Sessions page Summarize button is now a dropdown with three modes: All (next 10 unsummarized), Top 10 (most-used), Pinned (pinned only)
+
+### Fixed
+- Removed PII leaks: `nicora-desk` and project-specific MCPs pulled from knowledge base
+- Expanded `new-user-safety.test.ts` to scan `server/` directory in addition to `client/src/`
+- Added pre-commit hook that runs safety tests before every commit (blocks PII leaks to public repo)
+
+## [1.24.0] - 2026-04-11
+
+### Added
+- **MCP recommendation engine** — analyzes project tech stack (package.json, Dockerfile, env files) and suggests matching MCPs from the catalog
+- **Session HTML export** — download any session as a standalone, sanitized HTML report with the full message timeline; shareable via email or chat
+- **Graph blast radius** — click a node to see the BFS-computed count of every downstream entity affected by a change ("if this MCP breaks, 5 projects are affected")
+
+## [1.23.0] - 2026-04-10
+
+### Added
+- **Insights engine** (`server/scanner/insights.ts`) — automated suggestions derived from real usage: cost-optimizer recommendations (Opus → Sonnet savings), cost-spike detection (>2× rolling 7-day average), heavy-model usage warnings, week-over-week trend alerts, stale session suggestions, duplicate-work detection, budget alerts (80%/100% thresholds)
+- **Monthly budget planner** — set a monthly spend cap in Settings; Dashboard Usage card shows progress bar; warning and critical insights fire at 80% and 100%
+- **Cost-spike anomaly detection** — rolling average based detection with drill-down to contributing sessions
+
+## [1.22.1] - 2026-04-10
+
+### Added
+- **Mobile-responsive sidebar** — auto-collapses below 768px, bottom-nav friendly
+- **Graph virtualization** — `onlyRenderVisibleElements` enabled for node counts > 200
+- **Session pagination** — server-side pagination with `page` + `limit` params, infinite-scroll UI on client
+- **Accessibility pass** — aria-labels on interactive elements, navigation landmarks, focus management on dialogs
+
+## [1.22.0] - 2026-04-10
+
+### Added
+- **Session duration on cards** — elapsed time from first to last timestamp
+- **Token count estimates** — "~45K tokens" label based on JSONL file size
+- **CSV export for cost analytics** — download daily costs as a CSV on the Stats page
+- **Ctrl+B keyboard shortcut** — toggle sidebar (alongside existing Ctrl+L)
+- **Markdown autosave** — 1.5s debounced autosave with "Saved" badge
+- **15 new MCPs in catalog** — Twilio, Notion, Airtable, Perplexity, MongoDB, Redis, Docker, AWS, Datadog, Sentry, Jira, ClickUp, HubSpot, Shopify, Twitch
+
+## [1.21.8] - 2026-04-09
+
+### Fixed
+- 9 dependency vulnerabilities (`npm audit fix`)
+
+## [1.21.7] - 2026-04-09
+
+### Added
+- **Usage dashboard card** — today / week / 30-day spend with budget progress bar
+- **Fuzzy session search** — default Deep mode with word-based matching
+- **UUID search mode** — exact-match mode for pasting session IDs
+
+## [1.21.6] - 2026-04-08
+
+### Fixed
+- Restored Pin button on Live view session cards (was hidden for sessions without JSONL history)
+
+## [1.21.5] - 2026-04-08
+
+### Added
+- Gitignored `docs/screenshots/` (contains live user data)
+- Pre-commit safety hook blocking PII leaks
+- Removed previously-committed screenshot binaries from git history
+
+## [1.21.4] - 2026-04-07
+
+### Fixed
+- **Security audit**: removed hardcoded user paths, phone numbers, and personal project names from UI strings, placeholder text, examples
+
+## [1.21.3] - 2026-04-07
+
+### Added
+- **Full UUID display** on session cards (clickable to copy) — no more clicking into a session to find its ID
+- **Pin sessions from Live view** — pin button on every Live session card
+- **Delete-All preserves pinned sessions** — bulk delete now skips pinned entries
+
+## [1.21.2] - 2026-04-06
+
+### Fixed
+- Live view detects orphaned session agents (agents whose parent Claude process exited)
+- 6 uncategorized MCPs added to knowledge base (browsermcp, discord, telegram, fakechat, etc.)
+
+## [1.21.1] - 2026-04-06
+
+### Added
+- **Context & Session Tips guide** — collapsible educational panel on Live view explaining context-window compression, session statuses, and model context limits (Haiku 200k, Sonnet 200k, Opus 1M)
+
+## [1.21.0] - 2026-04-05
+
+### Changed
+- Removed standalone Rules page; configuration now lives in Settings
+- Merged Activity and Discovery pages into a single route with tabs
+- Fixed Live session stats showing duplicate data across sessions
+
+## [1.20.0] - 2026-04-04
+
+### Added
+- **Agents page rewrite** — learn guide, description extraction fix, scanner dedup across plugin marketplaces, copyable file paths, recursive discovery under `~/.claude/plugins/`
+
+## [1.19.1] - 2026-04-03
+
+### Fixed
+- Session terminal launch on Windows — use `shell: true` spawn instead of passing the command as a single argument
+
+## [1.19.0] - 2026-04-03
+
+### Added
+- **Prompt templates page** (`/prompts`) — save, search, tag, favorite, and copy reusable prompt templates
+- **Markdown mega-enhancement** — context summary bar, full-content search, file creation wizard, type grouping, per-file budget meter, pin/lock, diff view on restore, section templates
+
+## [1.18.0] - 2026-04-02
+
+### Added
+- **Markdown page upgrades** — quick-edit drawer, drift analyzer (detects stale docs), dependency graph, live polling
+- **Server refactors** — split markdown scanner into smaller focused modules
+
+## [1.17.1] - 2026-04-02
+
+### Fixed
+- Session query invalidation — pin, delete, and summarize now update the UI immediately (was stale until manual refresh)
+
+## [1.17.0] - 2026-04-01
+
+### Added
+- **CLI receipt and audit** — log of spawned `claude -p` invocations with stderr/stdout
+- **Live cost ticker** — real-time total spend for currently-active sessions
+- **Subscription billing awareness** — compare spend against Max $100/mo and $200/mo plan limits
+
+### Fixed
+- Pin button and terminal launch edge cases across platforms
+
 ## [1.16.1] - 2026-03-18
 
 ### Added

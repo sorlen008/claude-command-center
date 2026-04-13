@@ -20,11 +20,12 @@ A local dashboard for visualizing and managing your [Claude Code](https://docs.a
 
 ### Why?
 
-- **"How much am I spending on Claude Code?"** -- Cost analytics by session, project, model, and day. See exactly where your tokens go.
-- **"Which MCP servers are configured where?"** -- Auto-discovers every `.mcp.json` across all projects. One view, zero setup.
+- **"How much am I spending on Claude Code?"** -- Cost analytics by session, project, model, and day. Set a monthly budget and get 80%/100% alerts. Opus→Sonnet savings recommendations.
+- **"Which MCP servers are configured where?"** -- Auto-discovers every `.mcp.json` across all projects. One view, zero setup. Stack-aware recommendations for what's missing.
 - **"I had a session last week that fixed this exact bug..."** -- Deep search across all session content. Find any conversation by what was said, not just the title.
 - **"What was I working on yesterday?"** -- Continuation intelligence detects unfinished work and generates context prompts to resume instantly.
-- **"I have 300+ sessions eating disk space."** -- Stale detection, bulk delete, and health scores help you clean up.
+- **"I have 300+ sessions eating disk space."** -- Stale detection, bulk delete, and health scores help you clean up. Pinned sessions survive bulk delete.
+- **"My graph has 1000+ edges and looks like spaghetti."** -- Focus Lens shows one node's neighborhood at a time in a clean radial layout, with a searchable picker for any entity in the full graph.
 
 <p align="center">
   <img src="docs/demo.gif" alt="Claude Command Center Demo" width="800">
@@ -34,9 +35,10 @@ A local dashboard for visualizing and managing your [Claude Code](https://docs.a
 
 | | |
 |---|---|
-| **Dashboard** -- entity counts, usage tracking, system health, quick actions | **Sessions** -- deep search, AI summaries, pins, notes, bulk delete |
-| **Live View** -- real-time sessions with context bars, cost estimates, agents | **Analytics** -- daily cost charts, model breakdown, error tracking |
-| **Graph** -- interactive entity map with custom nodes and AI suggestions | **MCP Servers** -- auto-discovered from all `.mcp.json` files, categorized |
+| **Dashboard** -- entity counts, monthly budget, insights, system health, quick actions | **Sessions** -- deep search, AI summaries, pins, notes, HTML export, delegation |
+| **Live View** -- real-time sessions with context bars, compact button, cost ticker | **Analytics** -- daily cost charts, model breakdown, CSV export, budget tracking |
+| **Graph** -- Focus Lens, 6 view modes, blast radius, custom nodes, AI suggestions | **MCP Servers** -- auto-discovered, categorized, with stack-based recommendations |
+| **Help Center** -- 107 topics, glossary, cheat sheet, first-5-minutes walkthrough | **Prompts** -- save and reuse effective prompt templates with tags |
 
 ---
 
@@ -64,7 +66,13 @@ See [SETUP.md](SETUP.md) for npm global install, production builds, and troubles
 ## Features
 
 - **Auto-discovers** all Claude Code projects, MCP servers, skills, plugins, and markdown files
-- **Session intelligence** -- deep search across message content, AI summaries, cost analytics, file heatmap, session health scores
+- **Help Center** -- four-tab learning surface with 107 topics, 49-term glossary, cheat sheet, first-5-minutes walkthrough, per-topic beginner/advanced difficulty filter, URL-hash deep-linking
+- **Session intelligence** -- deep search, AI summaries, cost analytics, file heatmap, session health scores, HTML export
+- **Automated insights** -- cost-spike detection, Opus→Sonnet savings suggestions, stale session alerts, duplicate-work detection, budget warnings
+- **Monthly budget planner** -- set a spend cap, watch it on the Dashboard, get 80% and 100% alerts
+- **Graph Focus Lens** -- survival mode for dense graphs (200+ nodes): shows a focus node + its neighborhood in a clean radial layout, searchable focus picker, escape hatch to show all
+- **Graph visualization** -- 6 view modes (force / tiles / tree / list / radial / matrix), blast radius, custom nodes via `graph-config.yaml`, AI-assisted suggestions
+- **MCP recommendations** -- analyzes project tech stack and suggests matching MCPs from the catalog
 - **Operations nerve center** -- real-time service health, cost pacing, attention items, overnight activity
 - **Continuation intelligence** -- detects unfinished work, uncommitted changes, abandoned sessions
 - **Bash knowledge base** -- every shell command indexed and searchable with success rates and failure hotspots
@@ -74,29 +82,33 @@ See [SETUP.md](SETUP.md) for npm global install, production builds, and troubles
 - **Project dashboards** -- per-project cost, health, files, and session aggregation
 - **Prompt library** -- save and reuse effective prompt templates
 - **Agent tracker** -- definitions and execution history across sessions
-- **Live view** -- real-time monitoring with context usage, message counts, and cost estimates
-- **Graph visualization** -- interactive ecosystem map with AI-assisted suggestions and `graph-config.yaml`
-- **Markdown editor** -- edit `CLAUDE.md` and memory files with version history
+- **Live view** -- real-time monitoring with context bars, compact button, click-to-open in Sessions, cost ticker
+- **Markdown editor** -- edit `CLAUDE.md` and memory files with autosave, version history, drift analyzer, overlap detection
 - **Discovery** -- finds unconfigured projects and MCP servers on disk
 - **One-click updates** -- check and apply updates from the sidebar
+- **Mobile-responsive** -- sidebar collapses below 768px, accessibility labels throughout
 
 ## Pages
 
 | Page | Description |
 |------|-------------|
-| **Dashboard** | Entity counts, health indicators, quick stats |
-| **Projects** | Discovered projects with session counts and tech stack |
-| **MCP Servers** | Every MCP server found in `.mcp.json` files |
-| **Skills** | User-invocable and system skills |
-| **Plugins** | Installed and available plugins |
-| **Markdown** | All `CLAUDE.md`, memory files, READMEs with editing |
-| **Sessions** | Deep search, AI summaries, cost per session, diffs, notes, pins, delegation |
-| **Agents** | Agent definitions and execution logs |
-| **Live** | Active sessions, agents, context usage, cost estimates |
-| **Graph** | Interactive node graph with custom nodes and AI suggestions |
-| **Discovery** | Unconfigured projects and MCP server suggestions |
-| **Config** | Claude Code settings, permissions, MCP configs |
-| **Activity** | File-change timeline from the watcher |
+| **Dashboard** | Entity counts, monthly budget, automated insights, usage card, quick stats |
+| **Projects** | Discovered projects with session counts, tech stack, per-project dashboards |
+| **MCP Servers** | Every MCP server found in `.mcp.json` files, categorized, with stack-aware recommendations |
+| **Skills** | Auto-categorized by inferred keywords (devops, quality, docs, ai, etc.), favoriting, grouping |
+| **Plugins** | Installed plugins with their bundled commands, agents, skills, and hooks |
+| **Markdown** | `CLAUDE.md`, memory files, READMEs — autosave editor, version history, drift analyzer, overlap detection |
+| **Sessions** | Deep search (three modes), AI summaries, pins, notes, HTML export, bulk delete with undo, delegation |
+| **Agents** | Agent definitions, execution history, stats, learn guide |
+| **Live** | Real-time sessions with context bars, compact button, click-to-open in Sessions |
+| **Graph** | Interactive node graph — Focus Lens default, 6 view modes, blast radius, custom nodes, AI suggest |
+| **Prompts** | Reusable prompt templates with tags and favorites |
+| **Messages** | Cross-session message timeline with content search |
+| **APIs** | External APIs from `apis-config.yaml`, env files, and Docker Compose |
+| **Activity & Discovery** | File-change timeline plus auto-detected infrastructure (Docker, git remotes, env URLs) |
+| **Stats** | Cost analytics, daily charts, model breakdown, CSV export, weekly digest |
+| **Settings** | Path config, app name, monthly budget, entity overrides, themes |
+| **Help Center** | 107 topics across 15 categories, glossary, cheat sheet, first-5-minutes walkthrough |
 
 ## Session Intelligence
 
