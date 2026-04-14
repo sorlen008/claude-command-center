@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useLiveData } from "@/hooks/use-agents";
-import { useTogglePin } from "@/hooks/use-sessions";
+import { useTogglePin, useSaveSessionTitle } from "@/hooks/use-sessions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ import {
   Pin,
   Minimize2,
   Copy,
+  Pencil,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -246,6 +248,9 @@ export default function Live() {
   const [showAgents, setShowAgents] = useState(false);
   const [compactTarget, setCompactTarget] = useState<ActiveSession | null>(null);
   const [compactCopied, setCompactCopied] = useState(false);
+  const [compactSending, setCompactSending] = useState(false);
+  const [compactSendResult, setCompactSendResult] = useState<"sent" | "failed" | null>(null);
+  const [compactDebug, setCompactDebug] = useState<string | null>(null);
   const tick = useTick(1000);
   const isCompact = new URLSearchParams(window.location.search).get("compact") === "true";
   const prevSessionIdsRef = useRef<Set<string> | null>(null);
@@ -289,6 +294,37 @@ export default function Live() {
       setCompactTarget(null);
     }, 1200);
   }, []);
+
+  const handleSendToTerminal = useCallback(async () => {
+    if (!compactTarget) return;
+    setCompactSending(true);
+    setCompactSendResult(null);
+    setCompactDebug(null);
+    try {
+      const res = await fetch("/api/live/compact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: compactTarget.sessionId }),
+      });
+      const data = await res.json() as { success: boolean; message?: string; debug?: { code: number; out: string; err: string; pid: number } };
+      setCompactSendResult(data.success ? "sent" : "failed");
+      if (!data.success && data.debug) {
+        setCompactDebug(`pid=${data.debug.pid} code=${data.debug.code} out="${data.debug.out}" err="${data.debug.err}"`);
+      }
+      if (data.success) {
+        setTimeout(() => {
+          setCompactSendResult(null);
+          setCompactTarget(null);
+          setCompactSending(false);
+        }, 1800);
+      } else {
+        setCompactSending(false);
+      }
+    } catch {
+      setCompactSendResult("failed");
+      setCompactSending(false);
+    }
+  }, [compactTarget]);
 
   // Countdown to next refresh
   const secsSinceUpdate = dataUpdatedAt ? Math.floor((tick - dataUpdatedAt) / 1000) : 0;
@@ -551,7 +587,7 @@ export default function Live() {
       </div>
 
       {/* Compact context dialog */}
-      <Dialog open={!!compactTarget} onOpenChange={(open) => { if (!open) setCompactTarget(null); }}>
+      <Dialog open={!!compactTarget} onOpenChange={(open) => { if (!open) { setCompactTarget(null); setCompactSendResult(null); setCompactSending(false); setCompactDebug(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -579,12 +615,16 @@ export default function Live() {
               </div>
               <div className="flex items-start gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
-                <span className="text-xs text-foreground/90">Happens inside the running Claude session — cannot be triggered remotely by Command Center</span>
+                <span className="text-xs text-foreground/90">Claude must be waiting at the prompt — won't work mid-response</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">Send to Terminal is Windows-only and targets whichever Terminal tab was last focused — switch to it first if you have multiple tabs</span>
               </div>
             </div>
             <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
               <p className="text-xs text-foreground/90 mb-1.5">
-                <span className="font-semibold text-purple-400">How to run it:</span> switch to your active Claude Code terminal and type:
+                <span className="font-semibold text-purple-400">How to run it:</span> click <span className="font-medium">Send to Terminal</span> below, or switch to your Claude Code terminal and type:
               </p>
               <code className="block text-xs font-mono bg-background/60 rounded px-2 py-1 text-purple-300">/compact</code>
               {compactTarget?.contextUsage && (
@@ -594,18 +634,43 @@ export default function Live() {
               )}
             </div>
           </div>
-          <DialogFooter className="flex-row justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setCompactTarget(null)}>
+          {compactDebug && (
+            <div className="mx-6 mb-1 rounded bg-muted/50 border border-border/40 px-2 py-1.5">
+              <p className="text-[10px] font-mono text-muted-foreground break-all">{compactDebug}</p>
+            </div>
+          )}
+          <DialogFooter className="flex-row justify-between items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setCompactTarget(null); setCompactSendResult(null); setCompactSending(false); }}>
               Cancel
             </Button>
-            <Button
-              size="sm"
-              className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
-              onClick={handleConfirmCompact}
-            >
-              {compactCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {compactCopied ? "Copied!" : "Copy /compact"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleConfirmCompact}
+              >
+                {compactCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {compactCopied ? "Copied!" : "Copy /compact"}
+              </Button>
+              <Button
+                size="sm"
+                className={`gap-1.5 ${compactSendResult === "sent" ? "bg-green-600 hover:bg-green-700" : compactSendResult === "failed" ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"} text-white`}
+                onClick={handleSendToTerminal}
+                disabled={compactSending || compactSendResult === "sent"}
+                title="Activates your terminal window and types /compact — works when Claude is waiting for input"
+              >
+                {compactSending ? (
+                  <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Sending...</>
+                ) : compactSendResult === "sent" ? (
+                  <><Check className="h-3.5 w-3.5" />Sent!</>
+                ) : compactSendResult === "failed" ? (
+                  <><AlertTriangle className="h-3.5 w-3.5" />Copy instead</>
+                ) : (
+                  <><Terminal className="h-3.5 w-3.5" />Send to Terminal</>
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -634,11 +699,36 @@ function ActiveSessionCard({
   onCompactClick: () => void;
   onOpenInSessions: () => void;
 }) {
-  const title = session.slug || shortSummary(session.firstMessage, 5) || session.sessionId.slice(0, 12) + "...";
+  const fallbackTitle = session.slug || shortSummary(session.firstMessage, 5) || session.sessionId.slice(0, 12) + "...";
+  const title = session.customName || fallbackTitle;
   const lastMsg = session.lastMessage ? shortSummary(session.lastMessage, 12) : null;
   const firstMsg = session.firstMessage ? shortSummary(session.firstMessage, 8) : null;
   const isCopied = copiedId === session.sessionId;
   const sc = getStatusConfig(session.status);
+
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(session.customName || "");
+  const saveTitle = useSaveSessionTitle();
+
+  const commitTitle = () => {
+    const next = titleDraft.trim();
+    if (next === (session.customName || "")) {
+      setEditingTitle(false);
+      return;
+    }
+    saveTitle.mutate(
+      { id: session.sessionId, title: next },
+      { onSettled: () => setEditingTitle(false) }
+    );
+  };
+
+  const clearTitle = () => {
+    setTitleDraft("");
+    saveTitle.mutate(
+      { id: session.sessionId, title: "" },
+      { onSettled: () => setEditingTitle(false) }
+    );
+  };
 
   return (
     <Card
@@ -663,7 +753,30 @@ function ActiveSessionCard({
           <div className="flex-1 min-w-0">
             {/* Title row */}
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium truncate">{title}</span>
+              {editingTitle ? (
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  maxLength={80}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") commitTitle();
+                    if (e.key === "Escape") { setTitleDraft(session.customName || ""); setEditingTitle(false); }
+                  }}
+                  onBlur={commitTitle}
+                  placeholder="Custom name…"
+                  className="flex-1 min-w-0 text-sm font-medium bg-background/60 border border-border/60 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400/60"
+                />
+              ) : (
+                <span
+                  className={`text-sm font-medium truncate ${session.customName ? "text-foreground" : ""}`}
+                  title={session.customName ? `Custom name (original: ${fallbackTitle})` : title}
+                >
+                  {title}
+                </span>
+              )}
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">PID {session.pid}</Badge>
               {session.permissionMode === "bypass" && (
                 <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/20">BYPASS</Badge>
@@ -672,6 +785,33 @@ function ActiveSessionCard({
                 <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">AUTO</Badge>
               )}
               <div className="ml-auto flex-shrink-0 flex items-center gap-0.5">
+                {editingTitle ? (
+                  session.customName && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={(e) => { e.stopPropagation(); clearTitle(); }}
+                      title="Clear custom name"
+                    >
+                      <X className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  )
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTitleDraft(session.customName || "");
+                      setEditingTitle(true);
+                    }}
+                    title={session.customName ? "Rename session" : "Set custom name"}
+                  >
+                    <Pencil className={`h-3.5 w-3.5 ${session.customName ? "text-purple-400" : "text-muted-foreground"}`} />
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="ghost"

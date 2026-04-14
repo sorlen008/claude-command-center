@@ -139,7 +139,7 @@ function getSessionDetails(filePath: string): SessionDetails {
         const u = record.message.usage;
         model = record.message.model || "";
         const tokensUsed = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-        const maxTokens = getMaxTokens(model);
+        const maxTokens = getMaxTokens(model, tokensUsed);
         contextUsage = { tokensUsed, maxTokens, percentage: Math.round((tokensUsed / maxTokens) * 100), model };
       }
     } catch {}

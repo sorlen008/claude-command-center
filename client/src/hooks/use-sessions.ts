@@ -306,6 +306,22 @@ export function useSaveNote() {
   });
 }
 
+export function useSaveSessionTitle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, title }: { id: string; title: string }) => {
+      const res = await apiRequest("PUT", `/api/sessions/${id}/title`, { title });
+      return res.json() as Promise<{ sessionId: string; title: string | null }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string | undefined;
+        return !!key && (key.startsWith("/api/sessions") || key === "/api/live");
+      }});
+    },
+  });
+}
+
 export function useFileTimeline(filePath: string | undefined) {
   const p = new URLSearchParams();
   if (filePath) p.set("path", filePath);

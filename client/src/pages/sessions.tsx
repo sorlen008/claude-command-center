@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate } from "@/hooks/use-sessions";
+import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useSaveSessionTitle, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate } from "@/hooks/use-sessions";
 import { useAppSettings } from "@/hooks/use-settings";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
   GitCommit, Clipboard, BarChart3, FolderKanban, Calendar, Settings,
   Plus, Play, BookOpen, Pin, StickyNote, MessageCircleQuestion,
   Server, Brain, TerminalSquare, Phone, Send, ArrowRight, Lightbulb, Download,
+  Pencil,
 } from "lucide-react";
 import type { SessionData, DeepSearchMatch } from "@shared/types";
 import { formatBytes, relativeTime as _relativeTime, formatDuration } from "@/lib/utils";
@@ -1415,6 +1416,31 @@ function SessionCard({
   const resumeCopied = copiedId === "resume:" + s.id;
   const [noteText, setNoteText] = useState(s.note || "");
   const [editingNote, setEditingNote] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(s.customName || "");
+  const saveTitle = useSaveSessionTitle();
+
+  useEffect(() => { setTitleDraft(s.customName || ""); }, [s.customName]);
+
+  const commitTitle = () => {
+    const next = titleDraft.trim();
+    if (next === (s.customName || "")) {
+      setEditingTitle(false);
+      return;
+    }
+    saveTitle.mutate(
+      { id: s.id, title: next },
+      { onSettled: () => setEditingTitle(false) }
+    );
+  };
+
+  const clearTitle = () => {
+    setTitleDraft("");
+    saveTitle.mutate(
+      { id: s.id, title: "" },
+      { onSettled: () => setEditingTitle(false) }
+    );
+  };
 
   return (
     <Card
@@ -1444,13 +1470,60 @@ function SessionCard({
             #{i + 1}
           </span>
 
-          {/* Main content — first message is primary, slug is secondary */}
+          {/* Main content — custom name (if set) or first message is primary, slug is secondary */}
           <div className="flex-1 min-w-0">
-            {/* First message as title */}
-            {s.firstMessage ? (
-              <p className="text-sm font-medium line-clamp-1"><HighlightText text={s.firstMessage} query={searchQuery || ""} /></p>
+            {editingTitle ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  maxLength={80}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") commitTitle();
+                    if (e.key === "Escape") { setTitleDraft(s.customName || ""); setEditingTitle(false); }
+                  }}
+                  onBlur={commitTitle}
+                  placeholder="Custom name…"
+                  className="flex-1 min-w-0 text-sm font-medium bg-background/60 border border-border/60 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-400/60"
+                />
+                {s.customName && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); clearTitle(); }}
+                    className="h-6 w-6 rounded hover:bg-accent flex items-center justify-center flex-shrink-0"
+                    title="Clear custom name"
+                  >
+                    <X className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                )}
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground/50 italic">(empty session)</p>
+              <div className="flex items-center gap-1.5 group/title">
+                {s.customName ? (
+                  <p className="text-sm font-medium line-clamp-1 text-foreground">{s.customName}</p>
+                ) : s.firstMessage ? (
+                  <p className="text-sm font-medium line-clamp-1"><HighlightText text={s.firstMessage} query={searchQuery || ""} /></p>
+                ) : (
+                  <p className="text-sm text-muted-foreground/50 italic">(empty session)</p>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setTitleDraft(s.customName || ""); setEditingTitle(true); }}
+                  className="h-5 w-5 rounded hover:bg-accent flex items-center justify-center flex-shrink-0 opacity-0 group-hover/title:opacity-100 transition-opacity"
+                  title={s.customName ? "Rename session" : "Set custom name"}
+                >
+                  <Pencil className={`h-3 w-3 ${s.customName ? "text-purple-400" : "text-muted-foreground"}`} />
+                </button>
+              </div>
+            )}
+            {s.customName && s.firstMessage && (
+              <p className="text-[11px] text-muted-foreground/60 line-clamp-1 mt-0.5">
+                <span className="text-[10px] text-muted-foreground/40 mr-1">was:</span>
+                <HighlightText text={s.firstMessage} query={searchQuery || ""} />
+              </p>
             )}
             {/* Meta line: time + slug + tags */}
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">

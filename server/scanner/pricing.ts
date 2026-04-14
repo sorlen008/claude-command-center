@@ -41,8 +41,13 @@ export function computeCost(
   ) / 1_000_000;
 }
 
-/** Max context window by model family */
-export function getMaxTokens(model: string): number {
-  if (model.includes("opus")) return 1_000_000;
+/**
+ * Max context window by model family.
+ * Opus 4.6 has a 1M-token beta (header `context-1m-2025-08-07`) but the JSONL
+ * doesn't record which header was used, so we default Opus to 200K and only
+ * promote to 1M once observed usage proves the larger window is in effect.
+ */
+export function getMaxTokens(model: string, observedTokens = 0): number {
+  if (model.includes("opus") && observedTokens > 200_000) return 1_000_000;
   return 200_000;
 }

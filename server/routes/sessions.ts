@@ -158,10 +158,11 @@ router.get("/api/sessions", (req: Request, res: Response) => {
   const start = (page - 1) * limit;
   const paged = sessions.slice(start, Math.min(start + limit, cappedTotal));
 
-  // Annotate sessions with summary, pin, and note data
+  // Annotate sessions with summary, pin, note, and custom name data
   const summaries = storage.getSummaries();
   const pinnedSet = new Set(storage.getPinnedSessions());
   const notes = storage.getNotes();
+  const titles = storage.getTitles();
   const annotated = paged.map(s => {
     const summary = summaries[s.id];
     return {
@@ -171,6 +172,7 @@ router.get("/api/sessions", (req: Request, res: Response) => {
       summaryOutcome: summary?.outcome || null,
       isPinned: pinnedSet.has(s.id),
       note: notes[s.id]?.text || undefined,
+      customName: titles[s.id] || undefined,
     };
   });
 
@@ -551,6 +553,30 @@ router.put("/api/sessions/:id/note", (req: Request, res: Response) => {
   }
   const note = storage.upsertNote(idResult.data, text.slice(0, 2000));
   res.json(note);
+});
+
+/** GET /api/sessions/:id/title — Get user-defined custom name for a session */
+router.get("/api/sessions/:id/title", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+  const title = storage.getTitle(idResult.data);
+  if (!title) return res.status(404).json({ message: "No custom name" });
+  res.json({ sessionId: idResult.data, title });
+});
+
+/** PUT /api/sessions/:id/title — Set or clear custom session name. Empty string clears. */
+router.put("/api/sessions/:id/title", (req: Request, res: Response) => {
+  const idResult = SessionIdSchema.safeParse(req.params.id);
+  if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
+  const raw = (req.body as { title?: string })?.title;
+  if (typeof raw !== "string") return res.status(400).json({ message: "title is required" });
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    storage.deleteTitle(idResult.data);
+    return res.json({ sessionId: idResult.data, title: null });
+  }
+  const saved = storage.upsertTitle(idResult.data, trimmed);
+  res.json({ sessionId: idResult.data, title: saved });
 });
 
 /** GET /api/sessions/:id/costs — Per-session cost breakdown */

@@ -13,7 +13,7 @@ if (!fs.existsSync(dataDir)) {
 const dbPath = path.join(dataDir, "command-center.json");
 const dbTmpPath = dbPath + ".tmp";
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export interface DBData {
   schemaVersion: number;
@@ -31,6 +31,7 @@ export interface DBData {
   promptTemplates: Record<string, PromptTemplate>;
   workflowConfig: WorkflowConfig;
   sessionNotes: Record<string, SessionNote>;
+  sessionTitles: Record<string, string>;
   pinnedSessions: string[];
   decisions: Decision[];
   markdownMeta: Record<string, { locked?: boolean; pinned?: boolean }>;
@@ -67,6 +68,7 @@ function defaultData(): DBData {
     promptTemplates: {},
     workflowConfig: { autoSummarize: false, autoArchiveStale: false, costAlertThreshold: null, autoTagByPath: false },
     sessionNotes: {},
+    sessionTitles: {},
     pinnedSessions: [],
     decisions: [],
     markdownMeta: {},
@@ -94,8 +96,11 @@ function migrate(loaded: Partial<DBData> & { schemaVersion?: number }): DBData {
     version = 1;
   }
 
-  // Future migrations go here:
-  // if (version < 2) { ... out.schemaVersion = 2; version = 2; }
+  // v1 → v2: Introduce sessionTitles map for user-defined custom session names.
+  if (version < 2) {
+    out = { ...out, sessionTitles: out.sessionTitles ?? {}, schemaVersion: 2 };
+    version = 2;
+  }
 
   return out;
 }

@@ -310,6 +310,29 @@ export class Storage {
     save();
   }
 
+  // Session Titles — user-defined custom names that override the auto-generated slug
+  getTitle(sessionId: string): string | null {
+    return getDB().sessionTitles[sessionId] || null;
+  }
+
+  getTitles(): Record<string, string> {
+    return getDB().sessionTitles;
+  }
+
+  upsertTitle(sessionId: string, title: string): string {
+    const clean = title.trim().slice(0, 80);
+    const db = getDB();
+    db.sessionTitles[sessionId] = clean;
+    save();
+    return clean;
+  }
+
+  deleteTitle(sessionId: string): void {
+    const db = getDB();
+    delete db.sessionTitles[sessionId];
+    save();
+  }
+
   // Decisions
   getDecisions(): Decision[] {
     return getDB().decisions;
@@ -340,6 +363,7 @@ export class Storage {
     const db = getDB();
     delete db.sessionSummaries[sessionId];
     delete db.sessionNotes[sessionId];
+    delete db.sessionTitles[sessionId];
     db.decisions = db.decisions.filter(d => d.sessionId !== sessionId);
     const pinIdx = db.pinnedSessions.indexOf(sessionId);
     if (pinIdx >= 0) db.pinnedSessions.splice(pinIdx, 1);

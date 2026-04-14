@@ -329,6 +329,7 @@ export interface ActiveSession {
   firstMessage?: string;
   lastMessage?: string;
   slug?: string;
+  customName?: string;
   projectKey?: string;
   contextUsage?: {
     tokensUsed: number;
@@ -424,6 +425,7 @@ export interface SessionData {
   summaryOutcome?: string | null;
   isPinned?: boolean;
   note?: string;
+  customName?: string;
 }
 
 export interface SessionSummary {
