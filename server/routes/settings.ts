@@ -18,6 +18,7 @@ const SettingsPatchSchema = z.object({
   scanPaths: ScanPathsSchema,
   onboarded: z.boolean().optional(),
   monthlyBudget: z.number().min(0).max(100000).nullable().optional(),
+  selectedPlanId: z.enum(["free", "pro", "max5x", "max20x", "api"]).nullable().optional(),
 });
 
 const router = Router();
@@ -38,6 +39,10 @@ router.patch("/api/settings", (req, res) => {
   }
   if (parsed.onboarded !== undefined) patch.onboarded = parsed.onboarded;
   if (parsed.monthlyBudget !== undefined) patch.monthlyBudget = parsed.monthlyBudget;
+  if (parsed.selectedPlanId !== undefined) {
+    patch.selectedPlanId = parsed.selectedPlanId;
+    patch.planSelectedAt = parsed.selectedPlanId ? new Date().toISOString() : null;
+  }
 
   const updated = storage.updateAppSettings(patch);
   res.json(updated);

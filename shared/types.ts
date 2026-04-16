@@ -731,6 +731,8 @@ export interface AppSettings {
   onboarded: boolean;
   billingMode: BillingMode;
   monthlyBudget?: number | null;  // USD, null = no budget set
+  selectedPlanId?: PlanId | null;
+  planSelectedAt?: string | null;
   scanPaths: {
     homeDir: string | null;
     claudeDir: string | null;
@@ -739,6 +741,119 @@ export interface AppSettings {
     extraSkillDirs: string[];
     extraPluginDirs: string[];
   };
+}
+
+// ---- Plan awareness ----
+
+export type PlanId = "free" | "pro" | "max5x" | "max20x" | "api";
+
+/**
+ * Field confidence tracks whether the number came from an official Anthropic page
+ * (`official`), a community/estimate source (`estimate`), or isn't published at all
+ * (`unknown`). The UI uses this to label bars honestly.
+ */
+export type FieldConfidence = "official" | "estimate" | "unknown";
+
+export interface WeeklyRange {
+  /** Lower bound of published Sonnet hours per rolling 7 days. null = unknown. */
+  sonnetHoursMin: number | null;
+  /** Upper bound of published Sonnet hours per rolling 7 days. */
+  sonnetHoursMax: number | null;
+  /** Opus hours per week (Max plans split Opus from Sonnet). */
+  opusHoursMin: number | null;
+  opusHoursMax: number | null;
+  confidence: FieldConfidence;
+}
+
+export interface SessionWindowDef {
+  /** Rolling window length that opens a new session. Currently 5h for all plans. */
+  durationHours: number;
+  /** Hard token ceiling if Anthropic publishes one. Usually null for subscriptions. */
+  tokenLimit: number | null;
+  confidence: FieldConfidence;
+}
+
+export interface PlanDefinition {
+  id: PlanId;
+  label: string;
+  priceUsdMonthly: number;
+  priceUsdAnnual: number | null;
+  bestFor: string;
+  sessionWindow: SessionWindowDef;
+  weekly: WeeklyRange;
+  /** Whether a per-token cost accrues (API) or you pay a flat subscription. */
+  payPerToken: boolean;
+}
+
+export interface ThrottleWindow {
+  /** Days of week: 0=Sun, 6=Sat */
+  daysOfWeek: number[];
+  /** Start hour in UTC */
+  startHourUtc: number;
+  /** End hour in UTC */
+  endHourUtc: number;
+  note: string;
+}
+
+export interface PlanCatalog {
+  version: string;
+  updatedAt: string;
+  sourceNote: string;
+  plans: PlanDefinition[];
+  throttleWindows: ThrottleWindow[];
+}
+
+// ---- Plan usage live data ----
+
+export interface SessionWindowUsage {
+  windowStartIso: string;
+  windowEndIso: string;
+  resetAtIso: string;
+  tokensUsed: number;
+  costUsd: number;
+  turnsInWindow: number;
+}
+
+export interface PeriodUsage {
+  periodStartIso: string;
+  periodEndIso: string;
+  tokensUsed: number;
+  costUsd: number;
+  sonnetHours: number;
+  opusHours: number;
+}
+
+export interface PredictedLimitHit {
+  periodicity: "session" | "weekly";
+  hitAtIso: string;
+  confidence: "low" | "medium" | "high";
+  note: string;
+}
+
+export interface PeakHoursGrid {
+  /** [7][24] matrix of avg USD spent per hour-slot over the historical dataset */
+  costByDayHour: number[][];
+  /** Same shape, active tokens */
+  tokensByDayHour: number[][];
+  /** Timezone the grid is in. */
+  timezone: string;
+}
+
+export interface PlanUsageResponse {
+  selectedPlanId: PlanId | null;
+  plan: PlanDefinition | null;
+  billingModeDetected: "subscription" | "api" | "unknown";
+  apiKeyPresent: boolean;
+  currentSession: SessionWindowUsage | null;
+  weekly: PeriodUsage | null;
+  monthly: PeriodUsage | null;
+  peakHours: PeakHoursGrid;
+  throttleWindows: ThrottleWindow[];
+  predictedLimitHit: PredictedLimitHit | null;
+  catalogVersion: string;
+  catalogUpdatedAt: string;
+  catalogSource: "bundled" | "override";
+  durationMs: number;
 }
 
 export interface CostInsight {

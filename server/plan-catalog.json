@@ -1,0 +1,115 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-04-15",
+  "sourceNote": "Community-maintained. Verified against claude.com/pricing and support.claude.com on 2026-04-15. Anthropic does not publish per-session token quotas; weekly hours ranges are official. 5-hour rolling session window is documented. Peak-hour throttling confirmed March 2026.",
+  "plans": [
+    {
+      "id": "free",
+      "label": "Free",
+      "priceUsdMonthly": 0,
+      "priceUsdAnnual": 0,
+      "bestFor": "Occasional use",
+      "sessionWindow": {
+        "durationHours": 5,
+        "tokenLimit": null,
+        "confidence": "official"
+      },
+      "weekly": {
+        "sonnetHoursMin": null,
+        "sonnetHoursMax": null,
+        "opusHoursMin": null,
+        "opusHoursMax": null,
+        "confidence": "unknown"
+      },
+      "payPerToken": false
+    },
+    {
+      "id": "pro",
+      "label": "Pro",
+      "priceUsdMonthly": 20,
+      "priceUsdAnnual": 200,
+      "bestFor": "Regular use",
+      "sessionWindow": {
+        "durationHours": 5,
+        "tokenLimit": null,
+        "confidence": "official"
+      },
+      "weekly": {
+        "sonnetHoursMin": 40,
+        "sonnetHoursMax": 80,
+        "opusHoursMin": null,
+        "opusHoursMax": null,
+        "confidence": "official"
+      },
+      "payPerToken": false
+    },
+    {
+      "id": "max5x",
+      "label": "Max 5x",
+      "priceUsdMonthly": 100,
+      "priceUsdAnnual": null,
+      "bestFor": "Frequent users who work with Claude on a variety of tasks",
+      "sessionWindow": {
+        "durationHours": 5,
+        "tokenLimit": null,
+        "confidence": "official"
+      },
+      "weekly": {
+        "sonnetHoursMin": 140,
+        "sonnetHoursMax": 280,
+        "opusHoursMin": 15,
+        "opusHoursMax": 35,
+        "confidence": "official"
+      },
+      "payPerToken": false
+    },
+    {
+      "id": "max20x",
+      "label": "Max 20x",
+      "priceUsdMonthly": 200,
+      "priceUsdAnnual": null,
+      "bestFor": "Daily users who collaborate often with Claude for most tasks",
+      "sessionWindow": {
+        "durationHours": 5,
+        "tokenLimit": null,
+        "confidence": "official"
+      },
+      "weekly": {
+        "sonnetHoursMin": 240,
+        "sonnetHoursMax": 480,
+        "opusHoursMin": 24,
+        "opusHoursMax": 40,
+        "confidence": "official"
+      },
+      "payPerToken": false
+    },
+    {
+      "id": "api",
+      "label": "API (pay-as-you-go)",
+      "priceUsdMonthly": 0,
+      "priceUsdAnnual": 0,
+      "bestFor": "Pay per token with no monthly cap",
+      "sessionWindow": {
+        "durationHours": 5,
+        "tokenLimit": null,
+        "confidence": "official"
+      },
+      "weekly": {
+        "sonnetHoursMin": null,
+        "sonnetHoursMax": null,
+        "opusHoursMin": null,
+        "opusHoursMax": null,
+        "confidence": "unknown"
+      },
+      "payPerToken": true
+    }
+  ],
+  "throttleWindows": [
+    {
+      "daysOfWeek": [1, 2, 3, 4, 5],
+      "startHourUtc": 13,
+      "endHourUtc": 19,
+      "note": "Anthropic tightens 5-hour limits weekdays 13:00-19:00 UTC during peak demand (confirmed March 2026)."
+    }
+  ]
+}

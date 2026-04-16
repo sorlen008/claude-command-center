@@ -137,6 +137,9 @@ export class Storage {
     if (patch.appName !== undefined) db.appSettings.appName = patch.appName;
     if (patch.onboarded !== undefined) db.appSettings.onboarded = patch.onboarded;
     if (patch.billingMode !== undefined) db.appSettings.billingMode = patch.billingMode;
+    if (patch.monthlyBudget !== undefined) db.appSettings.monthlyBudget = patch.monthlyBudget;
+    if (patch.selectedPlanId !== undefined) db.appSettings.selectedPlanId = patch.selectedPlanId;
+    if (patch.planSelectedAt !== undefined) db.appSettings.planSelectedAt = patch.planSelectedAt;
     if (patch.scanPaths) {
       db.appSettings.scanPaths = { ...db.appSettings.scanPaths, ...patch.scanPaths };
     }

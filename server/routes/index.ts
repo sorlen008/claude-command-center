@@ -22,6 +22,7 @@ import exportRouter from "./export";
 import costAnalyticsRouter from "./cost-analytics";
 import burnAnalyticsRouter from "./burn-analytics";
 import dashboardAnalyticsRouter from "./dashboard-analytics";
+import planUsageRouter from "./plan-usage";
 import apisRouter from "./apis";
 import { spawn } from "child_process";
 import { platform } from "os";
@@ -83,6 +84,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<void
   app.use(costAnalyticsRouter);
   app.use(burnAnalyticsRouter);
   app.use(dashboardAnalyticsRouter);
+  app.use(planUsageRouter);
   app.use(apisRouter);
 
   // Actions — open-folder and open-file share identical logic

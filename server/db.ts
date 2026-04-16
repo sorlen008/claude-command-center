@@ -41,6 +41,8 @@ export const defaultAppSettings: AppSettings = {
   appName: "Command Center",
   onboarded: false,
   billingMode: "auto",
+  selectedPlanId: null,
+  planSelectedAt: null,
   scanPaths: {
     homeDir: null,
     claudeDir: null,

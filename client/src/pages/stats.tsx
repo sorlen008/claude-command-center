@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { formatBytes, formatDayLabel, isToday, downloadCSV } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 
 // ---- Types ----
 
@@ -297,141 +297,353 @@ function LoadingSkeleton({ title }: { title: string }) {
   );
 }
 
-// ---- Tab: Usage ----
+// ---- Tab: Billing ----
 
-function UsageTab() {
-  const [, setLocation] = useLocation();
-  const { data, isLoading } = useQuery<StatsOverview>({
-    queryKey: ["/api/stats/overview"],
-    staleTime: 30000,
-  });
+type PlanId = "free" | "pro" | "max5x" | "max20x" | "api";
 
-  if (isLoading || !data) return <LoadingSkeleton title="usage stats" />;
+interface SettingsPayload { selectedPlanId: PlanId | null; billingMode: string; }
 
-  const maxDayCount = Math.max(...data.sessionsPerDay.map((d) => d.count), 1);
+interface PlanCatalogPlan {
+  id: PlanId;
+  label: string;
+  priceUsdMonthly: number;
+  weekly: { sonnetHoursMin: number | null; sonnetHoursMax: number | null; opusHoursMin: number | null; opusHoursMax: number | null; confidence: string };
+  sessionWindow: { durationHours: number };
+  payPerToken: boolean;
+}
+
+interface SessionWindowUsage { windowStartIso: string; windowEndIso: string; resetAtIso: string; tokensUsed: number; costUsd: number; turnsInWindow: number; }
+interface PeriodUsagePayload { periodStartIso: string; periodEndIso: string; tokensUsed: number; costUsd: number; sonnetHours: number; opusHours: number; }
+interface ThrottleWindow { daysOfWeek: number[]; startHourUtc: number; endHourUtc: number; note: string; }
+interface PredictedLimit { periodicity: string; hitAtIso: string; confidence: string; note: string; }
+interface PeakHoursPayload { costByDayHour: number[][]; tokensByDayHour: number[][]; timezone: string; }
+interface PlanUsagePayload {
+  selectedPlanId: PlanId | null;
+  plan: PlanCatalogPlan | null;
+  billingModeDetected: "subscription" | "api" | "unknown";
+  apiKeyPresent: boolean;
+  currentSession: SessionWindowUsage | null;
+  weekly: PeriodUsagePayload | null;
+  monthly: PeriodUsagePayload | null;
+  peakHours: PeakHoursPayload;
+  throttleWindows: ThrottleWindow[];
+  predictedLimitHit: PredictedLimit | null;
+  catalogVersion: string;
+  catalogUpdatedAt: string;
+  catalogSource: "bundled" | "override";
+  durationMs: number;
+}
+
+const PLAN_OPTIONS: Array<{ id: PlanId; label: string }> = [
+  { id: "free", label: "Free ($0)" },
+  { id: "pro", label: "Pro ($20/mo)" },
+  { id: "max5x", label: "Max 5x ($100/mo)" },
+  { id: "max20x", label: "Max 20x ($200/mo)" },
+  { id: "api", label: "API (pay-as-you-go)" },
+];
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function formatRelativeDuration(iso: string): string {
+  const diffMs = Date.parse(iso) - Date.now();
+  if (diffMs <= 0) return "now";
+  const h = Math.floor(diffMs / (60 * 60 * 1000));
+  const m = Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000));
+  if (h >= 24) return `in ${Math.floor(h / 24)}d ${h % 24}h`;
+  if (h > 0) return `in ${h}h ${m}m`;
+  return `in ${m}m`;
+}
+
+function LimitProgressRow({ label, used, limitLow, limitHigh, unit, sub }: { label: string; used: number; limitLow: number | null; limitHigh: number | null; unit: string; sub?: string }) {
+  const hasLimit = limitLow !== null && limitLow > 0;
+  const pctOfLow = hasLimit ? Math.min(100, (used / (limitLow as number)) * 100) : 0;
+  let barColor = "bg-emerald-500";
+  if (pctOfLow >= 100) barColor = "bg-red-500";
+  else if (pctOfLow >= 80) barColor = "bg-amber-500";
+  else if (pctOfLow >= 50) barColor = "bg-yellow-500";
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { icon: MessageSquare, color: "text-blue-400", label: "Total Sessions", value: data.totalSessions.toLocaleString() },
-          { icon: Bot, color: "text-purple-400", label: "Agent Executions", value: data.totalAgentExecutions.toLocaleString() },
-          { icon: HardDrive, color: "text-emerald-400", label: "Avg Session Size", value: formatBytes(data.averageSessionSize) },
-          { icon: FolderOpen, color: "text-orange-400", label: "Total Storage", value: formatBytes(data.totalTokensEstimate) },
-        ].map((item, i) => (
-          <div key={item.label} className="animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
-            <Card className="gradient-border">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
-                  <item.icon className={`h-4 w-4 ${item.color}`} />
-                  <span className="text-xs font-medium">{item.label}</span>
-                </div>
-                <div className="text-2xl font-bold font-mono tabular-nums">{item.value}</div>
-              </CardContent>
-            </Card>
-          </div>
-        ))}
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono tabular-nums text-xs">
+          {used.toLocaleString(undefined, { maximumFractionDigits: 1 })} {unit}
+          {hasLimit && limitHigh !== null && (
+            <span className="text-muted-foreground/60"> / {limitLow}-{limitHigh} {unit}</span>
+          )}
+          {hasLimit && limitHigh === null && (
+            <span className="text-muted-foreground/60"> / {limitLow} {unit}</span>
+          )}
+          {!hasLimit && <span className="text-muted-foreground/60"> · no limit</span>}
+        </span>
       </div>
+      <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
+        <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${pctOfLow}%` }} />
+      </div>
+      {sub && <div className="text-[10px] text-muted-foreground/60">{sub}</div>}
+    </div>
+  );
+}
 
-      {/* Sessions per Day */}
-      <Card className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-blue-400" />
-            Sessions per Day
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">Last 14 days</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-1.5 h-48">
-            {data.sessionsPerDay.map((day) => {
-              const heightPct = maxDayCount > 0 ? (day.count / maxDayCount) * 100 : 0;
-              const today = isToday(day.date);
+function isInThrottleWindow(d: number, h: number, throttleWindows: ThrottleWindow[]): boolean {
+  const utcHour = new Date().getTimezoneOffset() === 0 ? h : (h + new Date().getTimezoneOffset() / 60 + 48) % 24;
+  for (const w of throttleWindows) {
+    if (!w.daysOfWeek.includes(d)) continue;
+    if (utcHour >= w.startHourUtc && utcHour < w.endHourUtc) return true;
+  }
+  return false;
+}
+
+function PeakHoursHeatmap({ data, throttleWindows }: { data: PeakHoursPayload; throttleWindows: ThrottleWindow[] }) {
+  const flat = data.costByDayHour.flat();
+  const max = Math.max(...flat, 0.0001);
+  return (
+    <div>
+      <div className="grid gap-px" style={{ gridTemplateColumns: "auto repeat(24, minmax(0, 1fr))" }}>
+        <div />
+        {Array.from({ length: 24 }, (_, h) => (
+          <div key={`h-${h}`} className="text-[8px] text-muted-foreground/60 text-center font-mono">{h % 3 === 0 ? h : ""}</div>
+        ))}
+        {DAY_LABELS.map((dayLabel, d) => (
+          <>
+            <div key={`d-${d}`} className="text-[9px] text-muted-foreground/70 pr-1 flex items-center">{dayLabel}</div>
+            {Array.from({ length: 24 }, (_, h) => {
+              const value = data.costByDayHour[d]?.[h] ?? 0;
+              const opacity = value / max;
+              const inThrottle = isInThrottleWindow(d, h, throttleWindows);
               return (
-                <div key={day.date} className="flex-1 flex flex-col items-center gap-1 group">
-                  <span className={`text-[10px] font-mono tabular-nums transition-opacity ${day.count > 0 ? "opacity-100" : "opacity-0 group-hover:opacity-50"} ${today ? "text-blue-400 font-semibold" : "text-muted-foreground"}`}>
-                    {day.count}
-                  </span>
-                  <div className="w-full flex-1 flex items-end">
-                    <div
-                      className={`w-full rounded-t-sm transition-all duration-300 min-h-[2px] ${today ? "bg-gradient-to-t from-blue-500 to-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.3)]" : day.count > 0 ? "bg-gradient-to-t from-blue-500/60 to-blue-400/40 group-hover:from-blue-500/80 group-hover:to-blue-400/60" : "bg-muted/20"}`}
-                      style={{ height: `${Math.max(heightPct, 2)}%` }}
-                    />
-                  </div>
-                  <span className={`text-[9px] whitespace-nowrap ${today ? "text-blue-400 font-semibold" : "text-muted-foreground/60"}`}>
-                    {formatDayLabel(day.date)}
-                  </span>
-                </div>
+                <div
+                  key={`${d}-${h}`}
+                  className="aspect-square rounded-[2px] relative"
+                  style={{
+                    backgroundColor: `rgba(16, 185, 129, ${opacity.toFixed(3)})`,
+                    border: inThrottle ? "1px solid rgba(239, 68, 68, 0.5)" : undefined,
+                  }}
+                  title={`${dayLabel} ${h.toString().padStart(2, "0")}:00 · $${value.toFixed(3)}${inThrottle ? " · Anthropic throttle window" : ""}`}
+                />
               );
             })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Two columns: Projects + Distributions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="animate-fade-in-up" style={{ animationDelay: "250ms" }}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <FolderOpen className="h-4 w-4 text-blue-400" />
-              Top Projects
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data.topProjects.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No project data available</p>
-            ) : (
-              <div className="space-y-0.5">
-                <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5">
-                  <span className="flex-1">Project</span>
-                  <span className="w-20 text-right">Sessions</span>
-                  <span className="w-20 text-right">Size</span>
-                </div>
-                {data.topProjects.map((project) => (
-                  <button
-                    key={project.name}
-                    className="flex items-center w-full text-sm hover:bg-accent/30 px-2 py-2 rounded-md transition-colors text-left group"
-                    onClick={() => setLocation("/projects")}
-                  >
-                    <span className="flex-1 truncate text-muted-foreground group-hover:text-foreground transition-colors">{project.name}</span>
-                    <span className="w-20 text-right font-mono tabular-nums text-xs">{project.sessions}</span>
-                    <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{formatBytes(project.size)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="animate-fade-in-up" style={{ animationDelay: "300ms" }}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Bot className="h-4 w-4 text-purple-400" />
-              Distributions
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <DistributionBars data={data.agentTypeDistribution} label="Agent Type" />
-            <div className="border-t border-border/50" />
-            <DistributionBars data={data.modelDistribution} label="Model" />
-          </CardContent>
-        </Card>
+          </>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-500/30" />light</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-500/70" />heavy</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm border border-red-500" />Anthropic peak-throttle window</span>
+        <span className="ml-auto opacity-60">Timezone: {data.timezone}</span>
       </div>
     </div>
   );
 }
 
-// ---- Tab: Costs ----
+function PlanAwarenessSection() {
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery<SettingsPayload>({
+    queryKey: ["/api/settings"],
+    staleTime: 120000,
+  });
+  const { data: planUsage, isLoading: planLoading } = useQuery<PlanUsagePayload>({
+    queryKey: ["/api/analytics/plan-usage"],
+    staleTime: 60000,
+  });
 
-function CostsTab() {
+  const setPlan = useMutation({
+    mutationFn: async (planId: PlanId | null) => {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedPlanId: planId }),
+      });
+      if (!res.ok) throw new Error(`PATCH failed: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/plan-usage"] });
+    },
+  });
+
+  const refreshCatalog = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/settings/refresh-catalog", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `refresh failed: ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/plan-usage"] });
+    },
+  });
+
+  const selectedPlanId: PlanId | null = settings?.selectedPlanId ?? null;
+
+  return (
+    <div className="space-y-6">
+      {/* Plan selector */}
+      <Card className="animate-fade-in-up">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Shield className="h-4 w-4 text-blue-400" />
+            Subscription Plan
+            {planUsage?.billingModeDetected === "api" && <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1 text-amber-400 border-amber-400/30">ANTHROPIC_API_KEY detected → pay-as-you-go</Badge>}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={selectedPlanId || ""}
+              onChange={(e) => setPlan.mutate((e.target.value || null) as PlanId | null)}
+              className="bg-card border border-border rounded-md px-3 py-1.5 text-sm font-mono"
+            >
+              <option value="">— select plan —</option>
+              {PLAN_OPTIONS.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-[11px] gap-1"
+              onClick={() => refreshCatalog.mutate()}
+              disabled={refreshCatalog.isPending}
+            >
+              <RefreshCw className={`h-3 w-3 ${refreshCatalog.isPending ? "animate-spin" : ""}`} />
+              {refreshCatalog.isPending ? "Fetching…" : "Refresh catalog"}
+            </Button>
+            {planUsage && (
+              <span className="text-[10px] text-muted-foreground/60 font-mono">
+                catalog v{planUsage.catalogVersion} · updated {planUsage.catalogUpdatedAt} · {planUsage.catalogSource}
+              </span>
+            )}
+            {refreshCatalog.isError && <span className="text-[10px] text-red-400">{(refreshCatalog.error as Error)?.message}</span>}
+            {refreshCatalog.isSuccess && !refreshCatalog.isPending && (
+              <span className="text-[10px] text-emerald-400">
+                {refreshCatalog.data?.updated ? `Updated to v${refreshCatalog.data.newVersion}` : "Already on latest version"}
+              </span>
+            )}
+          </div>
+          {!selectedPlanId && (
+            <p className="text-xs text-muted-foreground/70 mt-3">
+              Select your plan to see usage-vs-limit bars, session reset times, and throttle-window guidance. Anthropic does not publish exact token quotas; bars use the low-end of official weekly ranges to bias toward safety.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Plan limit bar */}
+      {selectedPlanId && planUsage && planUsage.plan && (
+        <Card className="animate-fade-in-up gradient-border" style={{ animationDelay: "100ms" }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Target className="h-4 w-4 text-emerald-400" />
+              Usage vs {planUsage.plan.label}
+              {planLoading && <span className="text-[10px] text-muted-foreground/60">computing…</span>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {planUsage.currentSession ? (
+              <LimitProgressRow
+                label={`Current ${planUsage.plan.sessionWindow.durationHours}h session`}
+                used={planUsage.currentSession.tokensUsed}
+                limitLow={null}
+                limitHigh={null}
+                unit="tokens"
+                sub={`Window opened ${new Date(planUsage.currentSession.windowStartIso).toLocaleString()} · resets ${formatRelativeDuration(planUsage.currentSession.resetAtIso)} (${planUsage.currentSession.turnsInWindow} turns · $${planUsage.currentSession.costUsd.toFixed(2)})`}
+              />
+            ) : (
+              <div className="text-xs text-muted-foreground/70">No active 5-hour window.</div>
+            )}
+
+            {planUsage.weekly && planUsage.plan.weekly.sonnetHoursMin !== null && (
+              <LimitProgressRow
+                label="Sonnet, rolling 7 days"
+                used={planUsage.weekly.sonnetHours}
+                limitLow={planUsage.plan.weekly.sonnetHoursMin}
+                limitHigh={planUsage.plan.weekly.sonnetHoursMax}
+                unit="hours"
+                sub={`${planUsage.weekly.tokensUsed.toLocaleString()} tokens · $${planUsage.weekly.costUsd.toFixed(2)} · bar shows % of low-end estimate (${planUsage.plan.weekly.confidence})`}
+              />
+            )}
+
+            {planUsage.weekly && planUsage.plan.weekly.opusHoursMin !== null && (
+              <LimitProgressRow
+                label="Opus, rolling 7 days"
+                used={planUsage.weekly.opusHours}
+                limitLow={planUsage.plan.weekly.opusHoursMin}
+                limitHigh={planUsage.plan.weekly.opusHoursMax}
+                unit="hours"
+                sub={`Opus has a separate weekly bucket on Max plans.`}
+              />
+            )}
+
+            {planUsage.weekly && planUsage.plan.weekly.sonnetHoursMin === null && !planUsage.plan.payPerToken && (
+              <div className="text-xs text-muted-foreground/70">Anthropic has not published weekly hours for the {planUsage.plan.label} plan. Current 7-day spend: {planUsage.weekly.tokensUsed.toLocaleString()} tokens · ${planUsage.weekly.costUsd.toFixed(2)} · ~{planUsage.weekly.sonnetHours}h Sonnet.</div>
+            )}
+
+            {planUsage.plan.payPerToken && planUsage.monthly && (
+              <LimitProgressRow
+                label="Pay-as-you-go · this calendar month"
+                used={planUsage.monthly.costUsd}
+                limitLow={null}
+                limitHigh={null}
+                unit="USD"
+                sub={`${planUsage.monthly.tokensUsed.toLocaleString()} tokens · no subscription cap applies`}
+              />
+            )}
+
+            {planUsage.predictedLimitHit && (
+              <div className="border-t border-border/40 pt-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Repeat className="h-4 w-4 text-amber-400" />
+                  <span className="font-medium">Prediction ({planUsage.predictedLimitHit.confidence} confidence)</span>
+                  <span className="text-xs text-amber-400 font-mono">{formatRelativeDuration(planUsage.predictedLimitHit.hitAtIso)}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground/70 mt-1">{planUsage.predictedLimitHit.note}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Peak-hours heatmap */}
+      {planUsage && (
+        <Card className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-emerald-400" />
+              Peak Hours — your work pattern + Anthropic throttle windows
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">All-time avg per week</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PeakHoursHeatmap data={planUsage.peakHours} throttleWindows={planUsage.throttleWindows} />
+            {planUsage.throttleWindows.length > 0 && (
+              <p className="text-[10px] text-muted-foreground/60 mt-3">
+                {planUsage.throttleWindows[0].note}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function BillingTab() {
   const [, setLocation] = useLocation();
   const { data, isLoading } = useQuery<CostAnalytics>({
     queryKey: ["/api/analytics/costs"],
     staleTime: 60000,
   });
 
-  if (isLoading || !data) return <LoadingSkeleton title="cost data" />;
+  if (isLoading || !data) return (
+    <div className="space-y-6">
+      <PlanAwarenessSection />
+      <LoadingSkeleton title="cost data" />
+    </div>
+  );
 
   const inputPricePerToken = 3 / 1_000_000;
   const cacheReadPricePerToken = 0.3 / 1_000_000;
@@ -448,6 +660,12 @@ function CostsTab() {
 
   return (
     <div className="space-y-6">
+      <PlanAwarenessSection />
+
+      <div className="border-t border-border/30 pt-2">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Cost &amp; Error Breakdown</h2>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
@@ -683,9 +901,13 @@ function modelColorByFamily(family: string): string {
   return "bg-zinc-500";
 }
 
-function DashboardTab() {
+function ActivityTab() {
   const [, setLocation] = useLocation();
   const [range, setRange] = useState<TimeRange>("7d");
+  const { data: overview } = useQuery<StatsOverview>({
+    queryKey: ["/api/stats/overview"],
+    staleTime: 60000,
+  });
   const { data, isLoading } = useQuery<DashboardAnalytics>({
     queryKey: ["/api/analytics/dashboard", range],
     queryFn: async () => {
@@ -1013,8 +1235,56 @@ function DashboardTab() {
             </Card>
           </div>
 
+          {/* Storage + agent-type distribution (absorbed from old Usage tab) */}
+          {overview && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card className="animate-fade-in-up" style={{ animationDelay: "600ms" }}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <HardDrive className="h-4 w-4 text-emerald-400" />
+                    Storage & Sessions
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">All time</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Sessions</div>
+                      <div className="font-mono tabular-nums text-xl mt-1">{overview.totalSessions.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Agent Executions</div>
+                      <div className="font-mono tabular-nums text-xl mt-1">{overview.totalAgentExecutions.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Session Size</div>
+                      <div className="font-mono tabular-nums text-xl mt-1">{formatBytes(overview.averageSessionSize)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total JSONL Storage</div>
+                      <div className="font-mono tabular-nums text-xl mt-1">{formatBytes(overview.totalTokensEstimate)}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="animate-fade-in-up" style={{ animationDelay: "650ms" }}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-purple-400" />
+                    Agent Type Distribution
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">All time</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DistributionBars data={overview.agentTypeDistribution} label="Type" />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           <p className="text-[10px] text-muted-foreground/50 pt-2">
-            Dashboard includes subagent JSONL files (sessions spawned via the Task tool) in the header totals, per-model, per-day, and Background Activity panel. Cache-read tokens are excluded from Active Tokens but contribute to Cached Tokens and the cost figure. Activity categorization is deterministic from tool-use patterns; the 3-minute burn detection window matches the Burn tab spec.
+            Activity tab includes subagent JSONL files (sessions spawned via the Task tool) in the header totals, per-model, per-day, and Background Activity panel. Cache-read tokens are excluded from Active Tokens but contribute to Cached Tokens and the cost figure. Activity categorization is deterministic from tool-use patterns.
           </p>
         </>
       )}
@@ -1034,23 +1304,18 @@ export default function Stats() {
         </p>
       </div>
 
-      <Tabs defaultValue="dashboard">
+      <Tabs defaultValue="activity">
         <TabsList>
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-          <TabsTrigger value="costs">Costs</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard" className="mt-4">
-          <DashboardTab />
+        <TabsContent value="activity" className="mt-4">
+          <ActivityTab />
         </TabsContent>
 
-        <TabsContent value="usage" className="mt-4">
-          <UsageTab />
-        </TabsContent>
-
-        <TabsContent value="costs" className="mt-4">
-          <CostsTab />
+        <TabsContent value="billing" className="mt-4">
+          <BillingTab />
         </TabsContent>
       </Tabs>
     </div>
