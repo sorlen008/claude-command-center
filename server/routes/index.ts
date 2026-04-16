@@ -20,6 +20,7 @@ import aiSuggestRouter from "./ai-suggest";
 import statsRouter from "./stats";
 import exportRouter from "./export";
 import costAnalyticsRouter from "./cost-analytics";
+import burnAnalyticsRouter from "./burn-analytics";
 import apisRouter from "./apis";
 import { spawn } from "child_process";
 import { platform } from "os";
@@ -79,6 +80,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<void
   app.use(statsRouter);
   app.use(exportRouter);
   app.use(costAnalyticsRouter);
+  app.use(burnAnalyticsRouter);
   app.use(apisRouter);
 
   // Actions — open-folder and open-file share identical logic

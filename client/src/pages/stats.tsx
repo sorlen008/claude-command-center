@@ -16,6 +16,9 @@ import {
   Server,
   Cpu,
   Shield,
+  Flame,
+  Target,
+  Repeat,
 } from "lucide-react";
 import { formatBytes, formatDayLabel, isToday, downloadCSV } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -145,6 +148,53 @@ const ERROR_STYLES: Record<string, { bg: string; border: string; text: string; i
   network: { bg: "bg-blue-500/10", border: "border-blue-500/30", text: "text-blue-400", icon: Server },
   other: { bg: "bg-zinc-500/10", border: "border-zinc-500/30", text: "text-zinc-400", icon: AlertTriangle },
 };
+
+// ---- Burn types ----
+
+interface BurnCategoryStat {
+  category: string;
+  turns: number;
+  tokens: number;
+  cost: number;
+  burnedTurns: number;
+  burnedTokens: number;
+  burnedCost: number;
+  oneShotRatePct: number;
+}
+
+interface BurnDayStat {
+  date: string;
+  totalTokens: number;
+  burnedTokens: number;
+  totalCost: number;
+  burnedCost: number;
+}
+
+interface BurnTopSession {
+  sessionId: string;
+  firstMessage: string;
+  turns: number;
+  burnedTurns: number;
+  burnedTokens: number;
+  burnedCost: number;
+}
+
+interface BurnAnalytics {
+  totalSessions: number;
+  totalTurns: number;
+  totalTokens: number;
+  totalCost: number;
+  burnedTurns: number;
+  burnedTokens: number;
+  burnedCost: number;
+  burnPct: number;
+  oneShotRatePct: number;
+  worstCategory: string | null;
+  byCategory: BurnCategoryStat[];
+  byDay: BurnDayStat[];
+  topBurnSessions: BurnTopSession[];
+  durationMs: number;
+}
 
 // ---- Shared components ----
 
@@ -558,6 +608,186 @@ function CostsTab() {
   );
 }
 
+// ---- Tab: Burn ----
+
+function BurnTab() {
+  const [, setLocation] = useLocation();
+  const { data, isLoading } = useQuery<BurnAnalytics>({
+    queryKey: ["/api/analytics/burn"],
+    staleTime: 60000,
+  });
+
+  if (isLoading || !data) return <LoadingSkeleton title="burn data" />;
+
+  const maxDayTokens = Math.max(...data.byDay.map(d => d.totalTokens), 1);
+  const filteredCategories = data.byCategory.filter(c => c.turns > 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { icon: Flame, color: "text-red-400", label: "Burned Tokens", value: formatTokens(data.burnedTokens), sub: `${data.burnPct.toFixed(1)}% of ${formatTokens(data.totalTokens)}` },
+          { icon: DollarSign, color: "text-orange-400", label: "Burned Cost", value: formatCost(data.burnedCost), sub: `of ${formatCost(data.totalCost)} total` },
+          { icon: Target, color: "text-emerald-400", label: "One-Shot Rate", value: `${data.oneShotRatePct.toFixed(1)}%`, sub: `${data.totalTurns - data.burnedTurns} / ${data.totalTurns} turns` },
+          { icon: Repeat, color: "text-amber-400", label: "Worst Category", value: data.worstCategory || "None", sub: data.worstCategory ? "highest retry ratio" : "no retry loops detected" },
+        ].map((item, i) => (
+          <div key={item.label} className="animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
+            <Card className="gradient-border">
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
+                  <item.icon className={`h-4 w-4 ${item.color}`} />
+                  <span className="text-xs font-medium">{item.label}</span>
+                </div>
+                <div className="text-2xl font-bold font-mono tabular-nums">{item.value}</div>
+                <div className="text-[10px] text-muted-foreground/60 mt-0.5">{item.sub}</div>
+              </CardContent>
+            </Card>
+          </div>
+        ))}
+      </div>
+
+      {/* Burn vs productive per day */}
+      <Card className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Flame className="h-4 w-4 text-red-400" />
+            Burned vs Productive Tokens
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">Last 30 days</Badge>
+            <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-500/70" />Productive</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-red-500/70" />Burned</span>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-1 h-48">
+            {data.byDay.map((day) => {
+              const totalHeightPct = maxDayTokens > 0 ? (day.totalTokens / maxDayTokens) * 100 : 0;
+              const burnedPct = day.totalTokens > 0 ? (day.burnedTokens / day.totalTokens) * 100 : 0;
+              const today = isToday(day.date);
+              return (
+                <div key={day.date} className="flex-1 flex flex-col items-center gap-1 group">
+                  <span className={`text-[9px] font-mono tabular-nums transition-opacity ${day.totalTokens > 0 ? "opacity-0 group-hover:opacity-100" : "opacity-0"} ${today ? "text-red-400 font-semibold" : "text-muted-foreground"}`}>
+                    {day.burnedTokens > 0 ? `${Math.round(burnedPct)}% burn` : formatTokens(day.totalTokens)}
+                  </span>
+                  <div className="w-full flex-1 flex items-end">
+                    <div
+                      className="w-full rounded-t-sm overflow-hidden flex flex-col justify-end min-h-[2px]"
+                      style={{ height: `${Math.max(totalHeightPct, 2)}%` }}
+                    >
+                      <div
+                        className="w-full bg-gradient-to-t from-red-600/80 to-red-400/70"
+                        style={{ height: `${burnedPct}%` }}
+                      />
+                      <div
+                        className="w-full bg-gradient-to-t from-emerald-600/60 to-emerald-400/50"
+                        style={{ height: `${100 - burnedPct}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className={`text-[8px] whitespace-nowrap ${today ? "text-red-400 font-semibold" : "text-muted-foreground/60"}`}>
+                    {formatDayLabel(day.date)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Per category table */}
+      <Card className="animate-fade-in-up" style={{ animationDelay: "250ms" }}>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Target className="h-4 w-4 text-emerald-400" />
+            One-Shot Rate by Activity
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">All time</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filteredCategories.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No activity data available</p>
+          ) : (
+            <div className="space-y-0.5">
+              <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5">
+                <span className="flex-1">Category</span>
+                <span className="w-16 text-right">Turns</span>
+                <span className="w-20 text-right">Tokens</span>
+                <span className="w-20 text-right">Burned</span>
+                <span className="w-16 text-right">Cost</span>
+                <span className="w-44 text-right">One-Shot</span>
+              </div>
+              {filteredCategories.map((cat) => {
+                const oneShot = cat.oneShotRatePct;
+                let barColor = "bg-emerald-500";
+                if (oneShot < 60) barColor = "bg-red-500";
+                else if (oneShot < 85) barColor = "bg-amber-500";
+                return (
+                  <div key={cat.category} className="flex items-center w-full text-sm px-2 py-2 rounded-md hover:bg-accent/30 transition-colors">
+                    <span className="flex-1 text-muted-foreground">{cat.category}</span>
+                    <span className="w-16 text-right font-mono tabular-nums text-xs text-muted-foreground">{cat.turns}</span>
+                    <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{formatTokens(cat.tokens)}</span>
+                    <span className="w-20 text-right font-mono tabular-nums text-xs text-red-400/80">{cat.burnedTokens > 0 ? formatTokens(cat.burnedTokens) : "—"}</span>
+                    <span className="w-16 text-right font-mono tabular-nums text-xs text-amber-400/80">{formatCost(cat.cost)}</span>
+                    <div className="w-44 flex items-center gap-2 justify-end">
+                      <div className="h-2 flex-1 rounded-full bg-muted/30 overflow-hidden max-w-[100px]">
+                        <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${oneShot}%` }} />
+                      </div>
+                      <span className="font-mono tabular-nums text-xs w-12 text-right">{oneShot.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Top burn sessions */}
+      {data.topBurnSessions.length > 0 && (
+        <Card className="animate-fade-in-up" style={{ animationDelay: "300ms" }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Flame className="h-4 w-4 text-red-400" />
+              Top Burn Sessions
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">Most tokens spent on retries</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-0.5">
+              <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5">
+                <span className="flex-1">Session</span>
+                <span className="w-20 text-right">Turns</span>
+                <span className="w-20 text-right">Burned</span>
+                <span className="w-20 text-right">Tokens</span>
+                <span className="w-16 text-right">Cost</span>
+              </div>
+              {data.topBurnSessions.map((s) => (
+                <button
+                  key={s.sessionId}
+                  onClick={() => setLocation(`/sessions?q=${encodeURIComponent(s.sessionId.slice(0, 8))}`)}
+                  className="flex items-center w-full text-sm hover:bg-accent/30 px-2 py-2 rounded-md transition-colors text-left"
+                >
+                  <span className="flex-1 truncate text-muted-foreground text-xs">{s.firstMessage || s.sessionId.slice(0, 12)}</span>
+                  <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{s.turns}</span>
+                  <span className="w-20 text-right font-mono tabular-nums text-xs text-red-400/80">{s.burnedTurns}</span>
+                  <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{formatTokens(s.burnedTokens)}</span>
+                  <span className="w-16 text-right font-mono tabular-nums text-xs text-amber-400/80">{formatCost(s.burnedCost)}</span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <p className="text-[10px] text-muted-foreground/50 pt-2">
+        Burn detection is heuristic. Turns are flagged as burned when an Edit/Write hits a file touched in a previous turn within 3 minutes, when a Coding turn follows a tool error within 3 minutes, or when the same Bash test command runs twice within 3 minutes. Cache-read tokens are excluded from the token count but included in cost.
+      </p>
+    </div>
+  );
+}
+
 // ---- Main Analytics Page ----
 
 export default function Stats() {
@@ -574,6 +804,7 @@ export default function Stats() {
         <TabsList>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
+          <TabsTrigger value="burn">Burn</TabsTrigger>
         </TabsList>
 
         <TabsContent value="usage" className="mt-4">
@@ -582,6 +813,10 @@ export default function Stats() {
 
         <TabsContent value="costs" className="mt-4">
           <CostsTab />
+        </TabsContent>
+
+        <TabsContent value="burn" className="mt-4">
+          <BurnTab />
         </TabsContent>
       </Tabs>
     </div>
