@@ -1,6 +1,5 @@
-import { createReadStream } from "fs";
-import { createInterface } from "readline";
 import { getPricing, computeCost } from "./pricing";
+import { extractTurns, type RawTurn, type RawToolUse, type RawErrorEvent } from "./turn-extractor";
 
 // Categories the classifier can assign to a single assistant turn.
 export type BurnCategory =
@@ -52,25 +51,6 @@ export interface BurnSessionAnalysis {
   lastTs: string | null;
 }
 
-interface RawToolUse {
-  name: string;
-  input: Record<string, unknown>;
-}
-
-interface RawAssistantTurn {
-  ts: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  toolUses: RawToolUse[];
-}
-
-interface RawErrorEvent {
-  ts: string;
-}
-
 // Windows for retry-loop attribution. All in ms.
 // Same file re-edited inside this window -> the later edit is "burned".
 const REPEAT_EDIT_MS = 3 * 60 * 1000;
@@ -83,7 +63,7 @@ const TEST_CMD_REGEX = /\b(vitest|pytest|jest|mocha|go test|cargo test|npm (run 
 const GIT_CMD_REGEX = /\bgit (push|commit|merge|rebase|pull)\b|\bgh (pr|release) (create|edit|merge)\b/i;
 const BUILD_CMD_REGEX = /\b(npm run build|pnpm build|yarn build|tsc --noEmit|tsc\s|docker (compose|build|run|up)|pm2 |deploy)\b/i;
 
-function classifyTurn(toolUses: RawToolUse[]): BurnCategory {
+export function classifyTurn(toolUses: RawToolUse[]): BurnCategory {
   if (toolUses.length === 0) return "Conversation";
 
   const names = toolUses.map(t => (t.name || "").toLowerCase());
@@ -136,84 +116,13 @@ function extractBashCmdKey(toolUses: RawToolUse[]): string | null {
   return null;
 }
 
-function readTurnsAndErrors(filePath: string): Promise<{ turns: RawAssistantTurn[]; errors: RawErrorEvent[] }> {
-  return new Promise((resolve) => {
-    const turns: RawAssistantTurn[] = [];
-    const errors: RawErrorEvent[] = [];
-    try {
-      const stream = createReadStream(filePath, { encoding: "utf-8" });
-      const rl = createInterface({ input: stream, crlfDelay: Infinity });
-
-      rl.on("line", (line: string) => {
-        const trimmed = line.trim();
-        if (!trimmed) return;
-        try {
-          const record = JSON.parse(trimmed);
-          const ts = record.timestamp || "";
-
-          if (record.type === "assistant") {
-            const msg = record.message;
-            if (!msg || typeof msg !== "object") return;
-            const usage = msg.usage;
-            const model = msg.model || "unknown";
-            const toolUses: RawToolUse[] = [];
-            const content = msg.content;
-            if (Array.isArray(content)) {
-              for (const item of content) {
-                if (item && typeof item === "object" && item.type === "tool_use") {
-                  toolUses.push({
-                    name: typeof item.name === "string" ? item.name : "",
-                    input: (item.input && typeof item.input === "object") ? item.input as Record<string, unknown> : {},
-                  });
-                }
-              }
-            }
-            if (!usage && toolUses.length === 0) return;
-            turns.push({
-              ts,
-              model,
-              inputTokens: usage?.input_tokens || 0,
-              outputTokens: usage?.output_tokens || 0,
-              cacheReadTokens: usage?.cache_read_input_tokens || 0,
-              cacheCreationTokens: usage?.cache_creation_input_tokens || 0,
-              toolUses,
-            });
-          } else if (record.type === "user") {
-            const msg = record.message;
-            if (!msg || typeof msg !== "object") return;
-            const content = msg.content;
-            if (!Array.isArray(content)) return;
-            for (const item of content) {
-              if (item && typeof item === "object" && item.type === "tool_result" && item.is_error === true) {
-                errors.push({ ts });
-                break;
-              }
-            }
-          }
-        } catch {
-          // malformed line
-        }
-      });
-
-      rl.on("close", () => resolve({ turns, errors }));
-      rl.on("error", () => resolve({ turns, errors }));
-      stream.on("error", () => {
-        rl.close();
-        resolve({ turns, errors });
-      });
-    } catch {
-      resolve({ turns, errors });
-    }
-  });
-}
-
 function toMs(ts: string): number {
   const n = Date.parse(ts);
   return Number.isFinite(n) ? n : 0;
 }
 
 /** Pure analyzer: takes prerecorded raw turns/errors and returns per-turn burn attribution. */
-export function buildBurnTurns(turns: RawAssistantTurn[], errors: RawErrorEvent[]): BurnTurn[] {
+export function buildBurnTurns(turns: RawTurn[], errors: RawErrorEvent[]): BurnTurn[] {
   const result: BurnTurn[] = [];
   const lastEditAtByFile = new Map<string, number>();
   const lastTestCmdAt = new Map<string, number>();
@@ -289,7 +198,7 @@ export function buildBurnTurns(turns: RawAssistantTurn[], errors: RawErrorEvent[
 }
 
 export async function analyzeBurnForFile(sessionId: string, filePath: string): Promise<BurnSessionAnalysis> {
-  const { turns, errors } = await readTurnsAndErrors(filePath);
+  const { turns, errors } = await extractTurns(filePath);
   const burnTurns = buildBurnTurns(turns, errors);
   let totalTokens = 0, totalCost = 0, burnedTokens = 0, burnedCost = 0;
   let firstTs: string | null = null, lastTs: string | null = null;

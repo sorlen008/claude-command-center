@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -149,50 +150,101 @@ const ERROR_STYLES: Record<string, { bg: string; border: string; text: string; i
   other: { bg: "bg-zinc-500/10", border: "border-zinc-500/30", text: "text-zinc-400", icon: AlertTriangle },
 };
 
-// ---- Burn types ----
+// ---- Dashboard types ----
 
-interface BurnCategoryStat {
+type TimeRange = "today" | "7d" | "30d" | "month" | "all";
+
+interface DashboardHeader {
+  range: TimeRange;
+  rangeLabel: string;
+  rangeStartIso: string | null;
+  totalCost: number;
+  activeTokens: number;
+  cachedTokens: number;
+  totalTurns: number;
+  totalSessions: number;
+  cacheHitRatePct: number;
+}
+
+interface DailyBar {
+  date: string;
+  cost: number;
+  activeTokens: number;
+  cachedTokens: number;
+  burnedCost: number;
+  sessions: number;
+}
+
+interface ProjectRow {
+  project: string;
+  projectLabel: string;
+  cost: number;
+  sessions: number;
+  turns: number;
+}
+
+interface ActivityRow {
   category: string;
+  cost: number;
   turns: number;
   tokens: number;
-  cost: number;
-  burnedTurns: number;
-  burnedTokens: number;
-  burnedCost: number;
   oneShotRatePct: number;
-}
-
-interface BurnDayStat {
-  date: string;
-  totalTokens: number;
-  burnedTokens: number;
-  totalCost: number;
   burnedCost: number;
 }
 
-interface BurnTopSession {
-  sessionId: string;
-  firstMessage: string;
+interface ModelRow {
+  model: string;
+  family: "opus" | "sonnet" | "haiku" | "other";
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
   turns: number;
-  burnedTurns: number;
-  burnedTokens: number;
-  burnedCost: number;
 }
 
-interface BurnAnalytics {
-  totalSessions: number;
-  totalTurns: number;
-  totalTokens: number;
-  totalCost: number;
-  burnedTurns: number;
-  burnedTokens: number;
-  burnedCost: number;
+interface ToolCountRow {
+  name: string;
+  count: number;
+}
+
+interface BashCommandRow {
+  command: string;
+  count: number;
+}
+
+interface McpServerRow {
+  server: string;
+  count: number;
+  tools: string[];
+}
+
+interface SubagentTypeRow {
+  subagentType: string;
+  count: number;
+}
+
+interface BackgroundActivity {
+  subagentSessions: number;
+  subagentTurns: number;
+  subagentCost: number;
+  subagentTokens: number;
+  hookSessions: number;
+  hookCost: number;
+  subagentTypes: SubagentTypeRow[];
+}
+
+interface DashboardAnalytics {
+  header: DashboardHeader;
+  byDay: DailyBar[];
+  byProject: ProjectRow[];
+  byActivity: ActivityRow[];
+  byModel: ModelRow[];
+  coreTools: ToolCountRow[];
+  bashCommands: BashCommandRow[];
+  mcpServers: McpServerRow[];
+  background: BackgroundActivity;
   burnPct: number;
   oneShotRatePct: number;
-  worstCategory: string | null;
-  byCategory: BurnCategoryStat[];
-  byDay: BurnDayStat[];
-  topBurnSessions: BurnTopSession[];
   durationMs: number;
 }
 
@@ -608,182 +660,364 @@ function CostsTab() {
   );
 }
 
-// ---- Tab: Burn ----
+// ---- Tab: Dashboard ----
 
-function BurnTab() {
+const TIME_RANGES: Array<{ value: TimeRange; label: string }> = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "7 Days" },
+  { value: "30d", label: "30 Days" },
+  { value: "month", label: "This Month" },
+  { value: "all", label: "All" },
+];
+
+function barColorForOneShot(pct: number): string {
+  if (pct < 60) return "bg-red-500";
+  if (pct < 85) return "bg-amber-500";
+  return "bg-emerald-500";
+}
+
+function modelColorByFamily(family: string): string {
+  if (family === "opus") return "bg-orange-500";
+  if (family === "sonnet") return "bg-blue-500";
+  if (family === "haiku") return "bg-green-500";
+  return "bg-zinc-500";
+}
+
+function DashboardTab() {
   const [, setLocation] = useLocation();
-  const { data, isLoading } = useQuery<BurnAnalytics>({
-    queryKey: ["/api/analytics/burn"],
+  const [range, setRange] = useState<TimeRange>("7d");
+  const { data, isLoading } = useQuery<DashboardAnalytics>({
+    queryKey: ["/api/analytics/dashboard", range],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/dashboard?range=${range}`);
+      if (!res.ok) throw new Error("failed to fetch dashboard analytics");
+      return res.json();
+    },
     staleTime: 60000,
   });
 
-  if (isLoading || !data) return <LoadingSkeleton title="burn data" />;
-
-  const maxDayTokens = Math.max(...data.byDay.map(d => d.totalTokens), 1);
-  const filteredCategories = data.byCategory.filter(c => c.turns > 0);
+  const maxDayCost = Math.max(...(data?.byDay.map(d => d.cost) ?? []), 0.01);
 
   return (
     <div className="space-y-6">
-      {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { icon: Flame, color: "text-red-400", label: "Burned Tokens", value: formatTokens(data.burnedTokens), sub: `${data.burnPct.toFixed(1)}% of ${formatTokens(data.totalTokens)}` },
-          { icon: DollarSign, color: "text-orange-400", label: "Burned Cost", value: formatCost(data.burnedCost), sub: `of ${formatCost(data.totalCost)} total` },
-          { icon: Target, color: "text-emerald-400", label: "One-Shot Rate", value: `${data.oneShotRatePct.toFixed(1)}%`, sub: `${data.totalTurns - data.burnedTurns} / ${data.totalTurns} turns` },
-          { icon: Repeat, color: "text-amber-400", label: "Worst Category", value: data.worstCategory || "None", sub: data.worstCategory ? "highest retry ratio" : "no retry loops detected" },
-        ].map((item, i) => (
-          <div key={item.label} className="animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
-            <Card className="gradient-border">
-              <CardContent className="pt-5 pb-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
-                  <item.icon className={`h-4 w-4 ${item.color}`} />
-                  <span className="text-xs font-medium">{item.label}</span>
+      {/* Time range selector */}
+      <div className="flex items-center gap-1 flex-wrap">
+        {TIME_RANGES.map(r => (
+          <button
+            key={r.value}
+            onClick={() => setRange(r.value)}
+            className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${range === r.value ? "bg-primary text-primary-foreground border-primary" : "bg-transparent text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"}`}
+          >
+            {r.label}
+          </button>
+        ))}
+        {data && (
+          <span className="ml-auto text-[10px] text-muted-foreground/60 font-mono">
+            Scanned {data.header.totalSessions} sessions in {data.durationMs}ms
+          </span>
+        )}
+      </div>
+
+      {isLoading || !data ? (
+        <LoadingSkeleton title="dashboard data" />
+      ) : (
+        <>
+          {/* Header cards */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {[
+              { icon: DollarSign, color: "text-green-400", label: "Total Cost", value: formatCost(data.header.totalCost), sub: data.header.rangeLabel },
+              { icon: Zap, color: "text-amber-400", label: "Active Tokens", value: formatTokens(data.header.activeTokens), sub: "input + output + cache-write" },
+              { icon: Shield, color: "text-purple-400", label: "Cached Tokens", value: formatTokens(data.header.cachedTokens), sub: `${data.header.cacheHitRatePct.toFixed(1)}% hit rate` },
+              { icon: MessageSquare, color: "text-blue-400", label: "Sessions", value: data.header.totalSessions.toLocaleString(), sub: `${data.header.totalTurns.toLocaleString()} turns` },
+              { icon: Target, color: "text-emerald-400", label: "One-Shot", value: `${data.oneShotRatePct.toFixed(1)}%`, sub: `${data.burnPct.toFixed(1)}% burn` },
+            ].map((item, i) => (
+              <div key={item.label} className="animate-fade-in-up" style={{ animationDelay: `${i * 40}ms` }}>
+                <Card className="gradient-border">
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
+                      <item.icon className={`h-4 w-4 ${item.color}`} />
+                      <span className="text-xs font-medium">{item.label}</span>
+                    </div>
+                    <div className="text-2xl font-bold font-mono tabular-nums">{item.value}</div>
+                    <div className="text-[10px] text-muted-foreground/60 mt-0.5">{item.sub}</div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
+          </div>
+
+          {/* Daily activity bar chart */}
+          <Card className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-green-400" />
+                Daily Activity
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">{data.header.rangeLabel}</Badge>
+                <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-500/70" />Productive</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-red-500/70" />Burn</span>
                 </div>
-                <div className="text-2xl font-bold font-mono tabular-nums">{item.value}</div>
-                <div className="text-[10px] text-muted-foreground/60 mt-0.5">{item.sub}</div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.byDay.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activity in this range</p>
+              ) : (
+                <div className="flex items-end gap-1 h-48">
+                  {data.byDay.map((day) => {
+                    const heightPct = maxDayCost > 0 ? (day.cost / maxDayCost) * 100 : 0;
+                    const burnPct = day.cost > 0 ? (day.burnedCost / day.cost) * 100 : 0;
+                    const today = isToday(day.date);
+                    return (
+                      <div key={day.date} className="flex-1 flex flex-col items-center gap-1 group">
+                        <span className={`text-[9px] font-mono tabular-nums opacity-0 group-hover:opacity-100 transition-opacity ${today ? "text-green-400 font-semibold" : "text-muted-foreground"}`}>
+                          ${day.cost.toFixed(2)}
+                        </span>
+                        <div className="w-full flex-1 flex items-end">
+                          <div
+                            className="w-full rounded-t-sm overflow-hidden flex flex-col justify-end min-h-[2px]"
+                            style={{ height: `${Math.max(heightPct, 2)}%` }}
+                          >
+                            <div className="w-full bg-gradient-to-t from-red-600/80 to-red-400/70" style={{ height: `${burnPct}%` }} />
+                            <div className="w-full bg-gradient-to-t from-emerald-600/60 to-emerald-400/50" style={{ height: `${100 - burnPct}%` }} />
+                          </div>
+                        </div>
+                        <span className={`text-[8px] whitespace-nowrap ${today ? "text-green-400 font-semibold" : "text-muted-foreground/60"}`}>
+                          {formatDayLabel(day.date)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* By Project + By Model */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card className="animate-fade-in-up" style={{ animationDelay: "250ms" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-orange-400" />
+                  By Project
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.byProject.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No project data</p>
+                ) : (
+                  <div className="space-y-0.5 max-h-[320px] overflow-auto">
+                    <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5 sticky top-0 bg-card">
+                      <span className="flex-1">Project</span>
+                      <span className="w-16 text-right">Cost</span>
+                      <span className="w-16 text-right">Sessions</span>
+                      <span className="w-16 text-right">Turns</span>
+                    </div>
+                    {data.byProject.slice(0, 20).map((p) => (
+                      <button
+                        key={p.project}
+                        onClick={() => setLocation(`/sessions?project=${encodeURIComponent(p.project)}`)}
+                        className="flex items-center w-full text-sm hover:bg-accent/30 px-2 py-2 rounded-md transition-colors text-left"
+                      >
+                        <span className="flex-1 truncate text-muted-foreground">{p.projectLabel}</span>
+                        <span className="w-16 text-right font-mono tabular-nums text-xs text-amber-400/80">{formatCost(p.cost)}</span>
+                        <span className="w-16 text-right font-mono tabular-nums text-xs text-muted-foreground">{p.sessions}</span>
+                        <span className="w-16 text-right font-mono tabular-nums text-xs text-muted-foreground">{p.turns}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="animate-fade-in-up" style={{ animationDelay: "300ms" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-purple-400" />
+                  By Model
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.byModel.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No model data</p>
+                ) : (
+                  <div className="space-y-0.5 max-h-[320px] overflow-auto">
+                    <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5">
+                      <span className="flex-1">Model</span>
+                      <span className="w-16 text-right">Cost</span>
+                      <span className="w-20 text-right">Tokens</span>
+                      <span className="w-12 text-right">Turns</span>
+                    </div>
+                    {data.byModel.map((m) => (
+                      <div key={m.model} className="flex items-center w-full text-sm px-2 py-2 rounded-md hover:bg-accent/30">
+                        <span className="flex-1 flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${modelColorByFamily(m.family)}`} />
+                          <span className="text-muted-foreground text-xs truncate">{m.model}</span>
+                        </span>
+                        <span className="w-16 text-right font-mono tabular-nums text-xs text-amber-400/80">{formatCost(m.cost)}</span>
+                        <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{formatTokens(m.inputTokens + m.outputTokens)}</span>
+                        <span className="w-12 text-right font-mono tabular-nums text-xs text-muted-foreground">{m.turns}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
-        ))}
-      </div>
 
-      {/* Burn vs productive per day */}
-      <Card className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Flame className="h-4 w-4 text-red-400" />
-            Burned vs Productive Tokens
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">Last 30 days</Badge>
-            <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-500/70" />Productive</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-red-500/70" />Burned</span>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-1 h-48">
-            {data.byDay.map((day) => {
-              const totalHeightPct = maxDayTokens > 0 ? (day.totalTokens / maxDayTokens) * 100 : 0;
-              const burnedPct = day.totalTokens > 0 ? (day.burnedTokens / day.totalTokens) * 100 : 0;
-              const today = isToday(day.date);
-              return (
-                <div key={day.date} className="flex-1 flex flex-col items-center gap-1 group">
-                  <span className={`text-[9px] font-mono tabular-nums transition-opacity ${day.totalTokens > 0 ? "opacity-0 group-hover:opacity-100" : "opacity-0"} ${today ? "text-red-400 font-semibold" : "text-muted-foreground"}`}>
-                    {day.burnedTokens > 0 ? `${Math.round(burnedPct)}% burn` : formatTokens(day.totalTokens)}
-                  </span>
-                  <div className="w-full flex-1 flex items-end">
-                    <div
-                      className="w-full rounded-t-sm overflow-hidden flex flex-col justify-end min-h-[2px]"
-                      style={{ height: `${Math.max(totalHeightPct, 2)}%` }}
-                    >
-                      <div
-                        className="w-full bg-gradient-to-t from-red-600/80 to-red-400/70"
-                        style={{ height: `${burnedPct}%` }}
-                      />
-                      <div
-                        className="w-full bg-gradient-to-t from-emerald-600/60 to-emerald-400/50"
-                        style={{ height: `${100 - burnedPct}%` }}
-                      />
+          {/* By Activity + Background */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card className="animate-fade-in-up" style={{ animationDelay: "350ms" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Target className="h-4 w-4 text-emerald-400" />
+                  By Activity
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.byActivity.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No activity data</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5">
+                      <span className="flex-1">Category</span>
+                      <span className="w-14 text-right">Turns</span>
+                      <span className="w-16 text-right">Cost</span>
+                      <span className="w-28 text-right">One-Shot</span>
                     </div>
-                  </div>
-                  <span className={`text-[8px] whitespace-nowrap ${today ? "text-red-400 font-semibold" : "text-muted-foreground/60"}`}>
-                    {formatDayLabel(day.date)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Per category table */}
-      <Card className="animate-fade-in-up" style={{ animationDelay: "250ms" }}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Target className="h-4 w-4 text-emerald-400" />
-            One-Shot Rate by Activity
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">All time</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {filteredCategories.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No activity data available</p>
-          ) : (
-            <div className="space-y-0.5">
-              <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5">
-                <span className="flex-1">Category</span>
-                <span className="w-16 text-right">Turns</span>
-                <span className="w-20 text-right">Tokens</span>
-                <span className="w-20 text-right">Burned</span>
-                <span className="w-16 text-right">Cost</span>
-                <span className="w-44 text-right">One-Shot</span>
-              </div>
-              {filteredCategories.map((cat) => {
-                const oneShot = cat.oneShotRatePct;
-                let barColor = "bg-emerald-500";
-                if (oneShot < 60) barColor = "bg-red-500";
-                else if (oneShot < 85) barColor = "bg-amber-500";
-                return (
-                  <div key={cat.category} className="flex items-center w-full text-sm px-2 py-2 rounded-md hover:bg-accent/30 transition-colors">
-                    <span className="flex-1 text-muted-foreground">{cat.category}</span>
-                    <span className="w-16 text-right font-mono tabular-nums text-xs text-muted-foreground">{cat.turns}</span>
-                    <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{formatTokens(cat.tokens)}</span>
-                    <span className="w-20 text-right font-mono tabular-nums text-xs text-red-400/80">{cat.burnedTokens > 0 ? formatTokens(cat.burnedTokens) : "—"}</span>
-                    <span className="w-16 text-right font-mono tabular-nums text-xs text-amber-400/80">{formatCost(cat.cost)}</span>
-                    <div className="w-44 flex items-center gap-2 justify-end">
-                      <div className="h-2 flex-1 rounded-full bg-muted/30 overflow-hidden max-w-[100px]">
-                        <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${oneShot}%` }} />
+                    {data.byActivity.map((a) => (
+                      <div key={a.category} className="flex items-center w-full text-sm px-2 py-2 rounded-md hover:bg-accent/30">
+                        <span className="flex-1 text-muted-foreground">{a.category}</span>
+                        <span className="w-14 text-right font-mono tabular-nums text-xs text-muted-foreground">{a.turns}</span>
+                        <span className="w-16 text-right font-mono tabular-nums text-xs text-amber-400/80">{formatCost(a.cost)}</span>
+                        <div className="w-28 flex items-center gap-2 justify-end">
+                          <div className="h-2 w-14 rounded-full bg-muted/30 overflow-hidden">
+                            <div className={`h-full rounded-full ${barColorForOneShot(a.oneShotRatePct)}`} style={{ width: `${a.oneShotRatePct}%` }} />
+                          </div>
+                          <span className="font-mono tabular-nums text-xs w-12 text-right">{a.oneShotRatePct.toFixed(1)}%</span>
+                        </div>
                       </div>
-                      <span className="font-mono tabular-nums text-xs w-12 text-right">{oneShot.toFixed(1)}%</span>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="animate-fade-in-up border-red-500/20" style={{ animationDelay: "400ms" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Flame className="h-4 w-4 text-red-400" />
+                  Background Activity
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1 border-red-500/30 text-red-400">subagents + hooks</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Subagent sessions</div>
+                    <div className="font-mono tabular-nums text-lg">{data.background.subagentSessions.toLocaleString()}</div>
+                    <div className="text-[10px] text-amber-400/80">{formatCost(data.background.subagentCost)} · {formatTokens(data.background.subagentTokens)} tokens</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Hook / automation sessions</div>
+                    <div className="font-mono tabular-nums text-lg">{data.background.hookSessions.toLocaleString()}</div>
+                    <div className="text-[10px] text-amber-400/80">{formatCost(data.background.hookCost)}</div>
+                  </div>
+                </div>
+                {data.background.subagentTypes.length > 0 && (
+                  <div className="border-t border-border/30 pt-3">
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Subagent types delegated</div>
+                    <div className="space-y-0.5 max-h-[180px] overflow-auto">
+                      {data.background.subagentTypes.map((s) => (
+                        <div key={s.subagentType} className="flex items-center justify-between text-xs px-1 py-1">
+                          <span className="text-muted-foreground truncate">{s.subagentType}</span>
+                          <span className="font-mono tabular-nums text-muted-foreground">{s.count}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-      {/* Top burn sessions */}
-      {data.topBurnSessions.length > 0 && (
-        <Card className="animate-fade-in-up" style={{ animationDelay: "300ms" }}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Flame className="h-4 w-4 text-red-400" />
-              Top Burn Sessions
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">Most tokens spent on retries</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-0.5">
-              <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5">
-                <span className="flex-1">Session</span>
-                <span className="w-20 text-right">Turns</span>
-                <span className="w-20 text-right">Burned</span>
-                <span className="w-20 text-right">Tokens</span>
-                <span className="w-16 text-right">Cost</span>
-              </div>
-              {data.topBurnSessions.map((s) => (
-                <button
-                  key={s.sessionId}
-                  onClick={() => setLocation(`/sessions?q=${encodeURIComponent(s.sessionId.slice(0, 8))}`)}
-                  className="flex items-center w-full text-sm hover:bg-accent/30 px-2 py-2 rounded-md transition-colors text-left"
-                >
-                  <span className="flex-1 truncate text-muted-foreground text-xs">{s.firstMessage || s.sessionId.slice(0, 12)}</span>
-                  <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{s.turns}</span>
-                  <span className="w-20 text-right font-mono tabular-nums text-xs text-red-400/80">{s.burnedTurns}</span>
-                  <span className="w-20 text-right font-mono tabular-nums text-xs text-muted-foreground">{formatTokens(s.burnedTokens)}</span>
-                  <span className="w-16 text-right font-mono tabular-nums text-xs text-amber-400/80">{formatCost(s.burnedCost)}</span>
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+          {/* 3-col breakdown: Core Tools / Bash / MCP */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="animate-fade-in-up" style={{ animationDelay: "450ms" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-blue-400" />
+                  Core Tools
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.coreTools.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No tool usage</p>
+                ) : (
+                  <div className="space-y-0.5 max-h-[280px] overflow-auto">
+                    {data.coreTools.map((t) => (
+                      <div key={t.name} className="flex items-center justify-between text-sm px-2 py-1.5 rounded-md hover:bg-accent/30">
+                        <span className="text-muted-foreground">{t.name}</span>
+                        <span className="font-mono tabular-nums text-xs text-blue-400/80">{t.count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="animate-fade-in-up" style={{ animationDelay: "500ms" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-amber-400" />
+                  Bash Commands
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.bashCommands.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No bash usage</p>
+                ) : (
+                  <div className="space-y-0.5 max-h-[280px] overflow-auto">
+                    {data.bashCommands.map((b) => (
+                      <div key={b.command} className="flex items-center justify-between text-sm px-2 py-1.5 rounded-md hover:bg-accent/30">
+                        <span className="text-muted-foreground font-mono text-xs truncate">{b.command}</span>
+                        <span className="font-mono tabular-nums text-xs text-amber-400/80">{b.count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="animate-fade-in-up" style={{ animationDelay: "550ms" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Server className="h-4 w-4 text-purple-400" />
+                  MCP Servers
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.mcpServers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No MCP usage</p>
+                ) : (
+                  <div className="space-y-0.5 max-h-[280px] overflow-auto">
+                    {data.mcpServers.map((s) => (
+                      <div key={s.server} className="flex items-center justify-between text-sm px-2 py-1.5 rounded-md hover:bg-accent/30" title={`${s.tools.length} distinct tools: ${s.tools.slice(0, 5).join(", ")}${s.tools.length > 5 ? "…" : ""}`}>
+                        <span className="text-muted-foreground font-mono text-xs truncate">{s.server}</span>
+                        <span className="font-mono tabular-nums text-xs text-purple-400/80">{s.count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/50 pt-2">
+            Dashboard includes subagent JSONL files (sessions spawned via the Task tool) in the header totals, per-model, per-day, and Background Activity panel. Cache-read tokens are excluded from Active Tokens but contribute to Cached Tokens and the cost figure. Activity categorization is deterministic from tool-use patterns; the 3-minute burn detection window matches the Burn tab spec.
+          </p>
+        </>
       )}
-
-      <p className="text-[10px] text-muted-foreground/50 pt-2">
-        Burn detection is heuristic. Turns are flagged as burned when an Edit/Write hits a file touched in a previous turn within 3 minutes, when a Coding turn follows a tool error within 3 minutes, or when the same Bash test command runs twice within 3 minutes. Cache-read tokens are excluded from the token count but included in cost.
-      </p>
     </div>
   );
 }
@@ -800,12 +1034,16 @@ export default function Stats() {
         </p>
       </div>
 
-      <Tabs defaultValue="usage">
+      <Tabs defaultValue="dashboard">
         <TabsList>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
-          <TabsTrigger value="burn">Burn</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="dashboard" className="mt-4">
+          <DashboardTab />
+        </TabsContent>
 
         <TabsContent value="usage" className="mt-4">
           <UsageTab />
@@ -813,10 +1051,6 @@ export default function Stats() {
 
         <TabsContent value="costs" className="mt-4">
           <CostsTab />
-        </TabsContent>
-
-        <TabsContent value="burn" className="mt-4">
-          <BurnTab />
         </TabsContent>
       </Tabs>
     </div>

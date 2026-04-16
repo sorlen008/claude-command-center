@@ -1,9 +1,8 @@
 import { Router } from "express";
-import { createReadStream } from "fs";
-import { createInterface } from "readline";
 import { getCachedSessions } from "../scanner/session-scanner";
 import { decodeProjectKey } from "../scanner/utils";
 import { getPricing, computeCost } from "../scanner/pricing";
+import { extractTurns } from "../scanner/turn-extractor";
 
 const router = Router();
 
@@ -70,7 +69,7 @@ let cachedResult: CostAnalyticsResult | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// --- JSONL streaming reader ---
+// --- JSONL reader (delegated to shared turn-extractor) ---
 async function processSessionFile(filePath: string): Promise<{
   tokens: Array<{
     timestamp: string;
@@ -80,90 +79,26 @@ async function processSessionFile(filePath: string): Promise<{
     cacheReadTokens: number;
     cacheWriteTokens: number;
   }>;
-  errors: Array<{
-    timestamp: string;
-    text: string;
-  }>;
+  errors: Array<{ timestamp: string; text: string }>;
   models: Set<string>;
 }> {
-  const tokens: Array<{
-    timestamp: string;
-    model: string;
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-  }> = [];
-  const errors: Array<{ timestamp: string; text: string }> = [];
+  const { turns, errors: rawErrors } = await extractTurns(filePath);
   const models = new Set<string>();
-
-  return new Promise((resolve) => {
-    try {
-      const stream = createReadStream(filePath, { encoding: "utf-8" });
-      const rl = createInterface({ input: stream, crlfDelay: Infinity });
-
-      rl.on("line", (line: string) => {
-        const trimmed = line.trim();
-        if (!trimmed) return;
-        try {
-          const record = JSON.parse(trimmed);
-
-          // Extract token usage from assistant messages
-          if (record.type === "assistant" && record.message?.usage) {
-            const u = record.message.usage;
-            const model = record.message.model || "unknown";
-            const inputTk = u.input_tokens || 0;
-            const outputTk = u.output_tokens || 0;
-            const cacheReadTk = u.cache_read_input_tokens || 0;
-            const cacheWriteTk = u.cache_creation_input_tokens || 0;
-            models.add(model);
-            tokens.push({
-              timestamp: record.timestamp || "",
-              model,
-              inputTokens: inputTk,
-              outputTokens: outputTk,
-              cacheReadTokens: cacheReadTk,
-              cacheWriteTokens: cacheWriteTk,
-            });
-          }
-
-          // Extract errors from user messages containing tool_result with is_error
-          if (record.type === "user" && record.message?.content && Array.isArray(record.message.content)) {
-            for (const item of record.message.content) {
-              if (item?.type === "tool_result" && item.is_error === true) {
-                let errorText = "";
-                if (typeof item.content === "string") {
-                  errorText = item.content;
-                } else if (Array.isArray(item.content)) {
-                  errorText = item.content
-                    .filter((c: any) => c?.type === "text")
-                    .map((c: any) => c.text || "")
-                    .join(" ");
-                }
-                if (errorText) {
-                  errors.push({
-                    timestamp: record.timestamp || "",
-                    text: errorText.slice(0, 500),
-                  });
-                }
-              }
-            }
-          }
-        } catch {
-          // malformed JSON line — skip
-        }
-      });
-
-      rl.on("close", () => resolve({ tokens, errors, models }));
-      rl.on("error", () => resolve({ tokens, errors, models }));
-      stream.on("error", () => {
-        rl.close();
-        resolve({ tokens, errors, models });
-      });
-    } catch {
-      resolve({ tokens, errors, models });
-    }
+  const tokens = turns.map(t => {
+    models.add(t.model);
+    return {
+      timestamp: t.ts,
+      model: t.model,
+      inputTokens: t.inputTokens,
+      outputTokens: t.outputTokens,
+      cacheReadTokens: t.cacheReadTokens,
+      cacheWriteTokens: t.cacheCreationTokens,
+    };
   });
+  const errors = rawErrors
+    .filter(e => e.text.length > 0)
+    .map(e => ({ timestamp: e.ts, text: e.text }));
+  return { tokens, errors, models };
 }
 
 async function buildCostAnalytics(): Promise<CostAnalyticsResult> {
