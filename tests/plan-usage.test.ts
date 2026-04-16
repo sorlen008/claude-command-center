@@ -10,8 +10,10 @@ import {
   findPlan,
   loadPlanCatalog,
   buildWeeklyBuildup,
+  fallbackSessionCeiling,
+  detectPlanMismatch,
 } from "../server/scanner/plan-usage";
-import type { PlanDefinition, PeriodUsage } from "@shared/types";
+import type { PlanDefinition, PeriodUsage, HistoricalLimits, PlanId } from "@shared/types";
 
 function turn(ts: string, activeTokens: number, model = "claude-sonnet-4-6", cost = 0): { ts: string; ms: number; model: string; activeTokens: number; cost: number } {
   return { ts, ms: Date.parse(ts), model, activeTokens, cost };
@@ -218,5 +220,104 @@ describe("buildWeeklyBuildup", () => {
 describe("smoke", () => {
   it("computeRangeCutoff(all) returns null", () => {
     expect(computeRangeCutoff("all")).toBeNull();
+  });
+});
+
+// Helpers shared by the multi-user polish tests below.
+function makeLitePlan(id: PlanId, payPerToken = false): PlanDefinition {
+  return {
+    id,
+    label: id,
+    priceUsdMonthly: 0,
+    priceUsdAnnual: null,
+    bestFor: "",
+    sessionWindow: { durationHours: 5, tokenLimit: null, confidence: "official" },
+    weekly: { sonnetHoursMin: null, sonnetHoursMax: null, opusHoursMin: null, opusHoursMax: null, confidence: "unknown" },
+    payPerToken,
+  };
+}
+
+function makeLimits(overrides: Partial<HistoricalLimits>): HistoricalLimits {
+  return {
+    hits: [],
+    totalHits: 0,
+    totalHitsLast30Days: 0,
+    medianTokens: null,
+    medianHours: null,
+    p25Tokens: null,
+    p50Tokens: null,
+    p90Tokens: null,
+    mostRecent: null,
+    opusShareAtHitPct: null,
+    sampleSize: 0,
+    ...overrides,
+  };
+}
+
+describe("fallbackSessionCeiling()", () => {
+  it("returns null ceiling + 'unknown' confidence when no plan is selected", () => {
+    const est = fallbackSessionCeiling(null);
+    expect(est.tokensPerSession).toBeNull();
+    expect(est.confidence).toBe("unknown");
+  });
+
+  it("returns null ceiling for pay-per-token (API) plans — no session cap applies", () => {
+    const est = fallbackSessionCeiling(makeLitePlan("api", true));
+    expect(est.tokensPerSession).toBeNull();
+    expect(est.confidence).toBe("unknown");
+  });
+
+  it("returns plan-specific estimates ordered by plan richness (Free < Pro < Max 5x < Max 20x)", () => {
+    const free = fallbackSessionCeiling(makeLitePlan("free")).tokensPerSession!;
+    const pro = fallbackSessionCeiling(makeLitePlan("pro")).tokensPerSession!;
+    const max5x = fallbackSessionCeiling(makeLitePlan("max5x")).tokensPerSession!;
+    const max20x = fallbackSessionCeiling(makeLitePlan("max20x")).tokensPerSession!;
+    expect(free).toBeGreaterThan(0);
+    expect(free).toBeLessThan(pro);
+    expect(pro).toBeLessThan(max5x);
+    expect(max5x).toBeLessThan(max20x);
+  });
+
+  it("returns 'estimate' confidence whenever the number is non-null", () => {
+    const est = fallbackSessionCeiling(makeLitePlan("pro"));
+    expect(est.tokensPerSession).not.toBeNull();
+    expect(est.confidence).toBe("estimate");
+    expect(est.basis.length).toBeGreaterThan(0);
+  });
+});
+
+describe("detectPlanMismatch()", () => {
+  it("returns null when sample size is below the 5-hit threshold", () => {
+    expect(detectPlanMismatch(makeLitePlan("pro"), makeLimits({ sampleSize: 4, medianTokens: 3_000_000 }))).toBeNull();
+  });
+
+  it("returns null when no plan is selected", () => {
+    expect(detectPlanMismatch(null, makeLimits({ sampleSize: 10, medianTokens: 3_000_000 }))).toBeNull();
+  });
+
+  it("returns null when the observed band matches the selected plan", () => {
+    // Pro band = <700K tokens. Median = 500K → on-plan.
+    expect(detectPlanMismatch(makeLitePlan("pro"), makeLimits({ sampleSize: 10, medianTokens: 500_000 }))).toBeNull();
+  });
+
+  it("suggests Max 5x when a Pro user's median is in the 700K–5M band", () => {
+    const hit = detectPlanMismatch(makeLitePlan("pro"), makeLimits({ sampleSize: 10, medianTokens: 2_000_000 }));
+    expect(hit).not.toBeNull();
+    expect(hit!.suggestedPlanId).toBe("max5x");
+    expect(hit!.reason).toContain("2.0M");
+  });
+
+  it("suggests Max 20x when a Pro user's median exceeds 5M tokens", () => {
+    const hit = detectPlanMismatch(makeLitePlan("pro"), makeLimits({ sampleSize: 10, medianTokens: 7_500_000 }));
+    expect(hit).not.toBeNull();
+    expect(hit!.suggestedPlanId).toBe("max20x");
+  });
+
+  it("does not downgrade-suggest — Max 20x users with low observed usage get no hint", () => {
+    expect(detectPlanMismatch(makeLitePlan("max20x"), makeLimits({ sampleSize: 10, medianTokens: 500_000 }))).toBeNull();
+  });
+
+  it("skips pay-per-token plans entirely", () => {
+    expect(detectPlanMismatch(makeLitePlan("api", true), makeLimits({ sampleSize: 10, medianTokens: 9_000_000 }))).toBeNull();
   });
 });

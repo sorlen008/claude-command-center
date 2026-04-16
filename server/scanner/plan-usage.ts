@@ -15,6 +15,8 @@ import type {
   PredictedLimitHit,
   BuildupPoint,
   HistoricalLimits,
+  EstimatedCeiling,
+  PlanDetectionHint,
 } from "@shared/types";
 import { buildHistoricalLimits } from "./historical-limits";
 
@@ -305,6 +307,87 @@ export function predictLimitHit(
   };
 }
 
+/**
+ * Plan-specific fallback session-window ceiling. Only used when the user has
+ * zero past rate-limit hits — once real hits exist, their personal median
+ * replaces this estimate everywhere in the UI.
+ *
+ * The numbers are rough: they assume ~500K active tokens per hour of model
+ * use, multiplied by the *high end* of the plan's weekly Sonnet range
+ * divided across 7 × 5h sessions per week. They're labeled "estimate" so
+ * the user knows not to take them as law.
+ */
+export function fallbackSessionCeiling(plan: PlanDefinition | null): EstimatedCeiling {
+  if (!plan) return { tokensPerSession: null, basis: "Select a plan to see an estimated ceiling.", confidence: "unknown" };
+  if (plan.payPerToken) {
+    return { tokensPerSession: null, basis: "API pay-as-you-go has no session-window cap.", confidence: "unknown" };
+  }
+  // Rough per-plan estimate of tokens allowed in one 5h session window.
+  // Derived from Anthropic's published hours ranges, assuming typical users
+  // burn ~500K tokens per active hour. See the comment above.
+  const byId: Record<PlanId, number | null> = {
+    free: 200_000,
+    pro: 1_000_000,
+    max5x: 3_500_000,
+    max20x: 10_000_000,
+    api: null,
+  };
+  const est = byId[plan.id];
+  if (est === null || est === undefined) {
+    return { tokensPerSession: null, basis: `No session-window estimate for ${plan.label}.`, confidence: "unknown" };
+  }
+  return {
+    tokensPerSession: est,
+    basis: `Rough estimate for ${plan.label} before your real ceiling is learned from rate-limit events.`,
+    confidence: "estimate",
+  };
+}
+
+/**
+ * When a user's observed median is wildly outside the per-plan estimate band
+ * for their selected plan, suggest a better fit. Non-blocking — purely advisory.
+ */
+export function detectPlanMismatch(
+  selectedPlan: PlanDefinition | null,
+  historicalLimits: HistoricalLimits,
+): PlanDetectionHint | null {
+  if (!selectedPlan || selectedPlan.payPerToken) return null;
+  if (historicalLimits.sampleSize < 5 || historicalLimits.medianTokens === null) return null;
+
+  const median = historicalLimits.medianTokens;
+
+  // Token-band thresholds: anything below 700K is Pro-ish, 700K–5M is Max 5x, above 5M is Max 20x.
+  const bandFor = (tokens: number): PlanId => {
+    if (tokens < 700_000) return "pro";
+    if (tokens < 5_000_000) return "max5x";
+    return "max20x";
+  };
+
+  const observedBand = bandFor(median);
+  if (observedBand === selectedPlan.id) return null;
+
+  // Don't nag users on Max 20x that they might "only" need Max 5x — they have the
+  // bigger plan for a reason. Only suggest *upgrading* from a cheaper plan.
+  const upgradeOrder: PlanId[] = ["free", "pro", "max5x", "max20x"];
+  const selectedIdx = upgradeOrder.indexOf(selectedPlan.id);
+  const observedIdx = upgradeOrder.indexOf(observedBand);
+  if (observedIdx <= selectedIdx) return null;
+
+  const labels: Record<PlanId, string> = {
+    free: "Free",
+    pro: "Pro",
+    max5x: "Max 5x",
+    max20x: "Max 20x",
+    api: "API",
+  };
+
+  return {
+    suggestedPlanId: observedBand,
+    suggestedPlanLabel: labels[observedBand],
+    reason: `Your median at-hit token count is ~${(median / 1_000_000).toFixed(1)}M over ${historicalLimits.sampleSize} past hits — more consistent with ${labels[observedBand]} than ${selectedPlan.label}.`,
+  };
+}
+
 export async function buildPlanUsage(
   sessions: SessionMetaLite[],
   selectedPlanId: PlanId | null,
@@ -343,6 +426,10 @@ export async function buildPlanUsage(
   const billingMode: "subscription" | "api" | "unknown" =
     apiKeyPresent ? "api" : (selectedPlanId && selectedPlanId !== "api" ? "subscription" : "unknown");
 
+  const estimatedCeiling = fallbackSessionCeiling(plan);
+  const planDetectionHint = detectPlanMismatch(plan, historicalLimits);
+  const noSessionsYet = sessions.length === 0;
+
   return {
     selectedPlanId,
     plan,
@@ -353,6 +440,9 @@ export async function buildPlanUsage(
     weeklyBuildup,
     monthly,
     historicalLimits,
+    estimatedCeiling,
+    planDetectionHint,
+    noSessionsYet,
     peakHours,
     throttleWindows: catalog.throttleWindows || [],
     predictedLimitHit: predicted,

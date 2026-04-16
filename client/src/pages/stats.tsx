@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { formatBytes, formatDayLabel, isToday, downloadCSV } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Download, RefreshCw, AlertCircle, Gauge, History } from "lucide-react";
+import { Download, RefreshCw, AlertCircle, Gauge, History, Wallet, Lightbulb, ArrowRight, Sprout, X } from "lucide-react";
 import { InfoTooltip } from "@/components/info-tooltip";
 
 // ---- Types ----
@@ -321,7 +321,7 @@ function LoadingSkeleton({ title }: { title: string }) {
 
 type PlanId = "free" | "pro" | "max5x" | "max20x" | "api";
 
-interface SettingsPayload { selectedPlanId: PlanId | null; billingMode: string; }
+interface SettingsPayload { selectedPlanId: PlanId | null; billingMode: string; monthlyBudget?: number | null; }
 
 interface PlanCatalogPlan {
   id: PlanId;
@@ -350,9 +350,22 @@ interface HistoricalLimitsPayload {
   totalHitsLast30Days: number;
   medianTokens: number | null;
   medianHours: number | null;
+  p25Tokens: number | null;
+  p50Tokens: number | null;
+  p90Tokens: number | null;
   mostRecent: HistoricalLimitHitPayload | null;
   opusShareAtHitPct: number | null;
   sampleSize: number;
+}
+interface EstimatedCeilingPayload {
+  tokensPerSession: number | null;
+  basis: string;
+  confidence: "estimate" | "unknown";
+}
+interface PlanDetectionHintPayload {
+  suggestedPlanId: PlanId;
+  suggestedPlanLabel: string;
+  reason: string;
 }
 interface ThrottleWindow { daysOfWeek: number[]; startHourUtc: number; endHourUtc: number; note: string; }
 interface PredictedLimit { periodicity: string; hitAtIso: string; confidence: string; note: string; }
@@ -367,6 +380,9 @@ interface PlanUsagePayload {
   weeklyBuildup: BuildupPointPayload[];
   monthly: PeriodUsagePayload | null;
   historicalLimits: HistoricalLimitsPayload;
+  estimatedCeiling: EstimatedCeilingPayload;
+  planDetectionHint: PlanDetectionHintPayload | null;
+  noSessionsYet: boolean;
   peakHours: PeakHoursPayload;
   throttleWindows: ThrottleWindow[];
   predictedLimitHit: PredictedLimit | null;
@@ -621,6 +637,298 @@ function PeakHoursHeatmap({ data, throttleWindows }: { data: PeakHoursPayload; t
   );
 }
 
+/**
+ * Horizontal bar with percentile tick marks (P25, P50, P90) and a "variable
+ * danger zone" band between P50 and P90. Rendered when the user has enough
+ * past rate-limit hits to trust percentiles (sampleSize >= 3).
+ */
+function PercentileBar({
+  current,
+  p25,
+  p50,
+  p90,
+  sampleSize,
+}: {
+  current: number;
+  p25: number;
+  p50: number;
+  p90: number;
+  sampleSize: number;
+}) {
+  // Scale so p90 sits at ~85% of the bar — leaves visual headroom for "over p90" cases.
+  const axisMax = Math.max(p90 * 1.18, current * 1.05, 1);
+  const pct = (n: number) => Math.max(0, Math.min(100, (n / axisMax) * 100));
+  const currentPct = pct(current);
+  const p25Pct = pct(p25);
+  const p50Pct = pct(p50);
+  const p90Pct = pct(p90);
+
+  // Color of the filled portion based on where current sits relative to percentiles.
+  const fillColor =
+    current >= p90 ? "bg-red-500" :
+    current >= p50 ? "bg-amber-500" :
+    current >= p25 ? "bg-yellow-500" : "bg-emerald-500";
+
+  return (
+    <div className="space-y-1.5">
+      <div className="h-5 rounded-full bg-muted/30 overflow-hidden relative">
+        {/* Variable-zone band (P50 → P90) */}
+        <div
+          className="absolute inset-y-0 bg-amber-500/10 border-x border-amber-400/20"
+          style={{ left: `${p50Pct}%`, width: `${Math.max(0, p90Pct - p50Pct)}%` }}
+          aria-hidden
+        />
+        {/* Current usage fill */}
+        <div
+          className={`h-full rounded-full ${fillColor} transition-all duration-500 relative z-10`}
+          style={{ width: `${currentPct}%` }}
+        />
+        {/* P25 / P50 / P90 tick marks */}
+        {[{ p: p25Pct, label: "P25", color: "bg-emerald-400" },
+          { p: p50Pct, label: "P50", color: "bg-amber-400" },
+          { p: p90Pct, label: "P90", color: "bg-red-400" }].map((tick) => (
+          <div
+            key={tick.label}
+            className={`absolute inset-y-0 w-[2px] ${tick.color} z-20`}
+            style={{ left: `${tick.p}%` }}
+            title={tick.label}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground/70">
+        <span>
+          <span className="text-emerald-400">P25 {formatTokens(p25)}</span>
+          {" · "}
+          <span className="text-amber-400">P50 {formatTokens(p50)}</span>
+          {" · "}
+          <span className="text-red-400">P90 {formatTokens(p90)}</span>
+        </span>
+        <span>n={sampleSize}</span>
+      </div>
+    </div>
+  );
+}
+
+function ZeroSessionEmptyState() {
+  return (
+    <Card className="animate-fade-in-up border-dashed">
+      <CardContent className="py-10 flex flex-col items-center text-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+          <Sprout className="h-7 w-7 text-emerald-400" />
+        </div>
+        <div>
+          <h3 className="text-base font-semibold">No Claude Code activity yet</h3>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto mt-1.5">
+            Usage and billing insights show up once you have some session history. Run Claude Code for a day and check back — we'll learn your personal limits from your real rate-limit events.
+          </p>
+        </div>
+        <div className="text-[11px] text-muted-foreground/60 font-mono">
+          Looking for sessions under <code className="bg-muted/60 px-1 py-0.5 rounded">~/.claude/projects/</code>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function BillingOnboardingCard({
+  onSelectPlan,
+  onSetBudget,
+  dismiss,
+}: {
+  onSelectPlan: (id: PlanId) => void;
+  onSetBudget: (usd: number | null) => void;
+  dismiss: () => void;
+}) {
+  const [budgetInput, setBudgetInput] = useState<string>("");
+  return (
+    <Card className="animate-fade-in-up gradient-border border-blue-500/30">
+      <CardContent className="pt-5 pb-5">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0">
+            <Lightbulb className="h-5 w-5 text-blue-400" />
+          </div>
+          <div className="flex-1 min-w-0 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">Set up your billing view</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Pick your Claude subscription so we can show usage-vs-limit bars, reset times, and a personal ceiling once we see your first rate-limit event. Nothing is sent anywhere — everything is read from your local <code className="font-mono bg-muted/60 px-1 py-0.5 rounded">~/.claude/</code> files.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70">Plan</span>
+              <select
+                defaultValue=""
+                onChange={(e) => e.target.value && onSelectPlan(e.target.value as PlanId)}
+                className="bg-card border border-border rounded-md px-3 py-1.5 text-sm font-mono"
+              >
+                <option value="">— choose —</option>
+                {PLAN_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70">Monthly budget (optional)</span>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={budgetInput}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                  className="bg-card border border-border rounded-md px-2 py-1 text-sm font-mono w-24"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => {
+                    const n = Number(budgetInput);
+                    if (Number.isFinite(n) && n >= 0) onSetBudget(n || null);
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+              <span className="text-[10px] text-muted-foreground/50">Used for spending-pace warnings on API mode.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            className="text-muted-foreground/60 hover:text-foreground shrink-0"
+            title="Dismiss"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ApiCostCard({
+  monthly,
+  monthlyBudget,
+  onSetBudget,
+}: {
+  monthly: PeriodUsagePayload | null;
+  monthlyBudget: number | null;
+  onSetBudget: (usd: number | null) => void;
+}) {
+  const spent = monthly?.costUsd ?? 0;
+  const budget = monthlyBudget ?? 0;
+  const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : null;
+  const color = pct === null ? "bg-blue-500" : pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : pct >= 50 ? "bg-yellow-500" : "bg-emerald-500";
+  const [input, setInput] = useState<string>("");
+
+  return (
+    <Card className="animate-fade-in-up gradient-border border-amber-500/30">
+      <CardContent className="pt-5 pb-5">
+        <div className="flex items-start justify-between gap-6 flex-wrap">
+          <div className="min-w-[220px]">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
+              <Wallet className="h-3.5 w-3.5 text-amber-400" />
+              Pay-as-you-go — calendar month
+              <InfoTooltip title="API mode" width={380}>
+                <p>You're billed per token with no session/weekly cap. The "personal ceiling" from subscription mode doesn't apply — only your monthly spend does.</p>
+                <p>This card shows current calendar-month spend. Set a soft budget below to get a visual heads-up when you're burning faster than planned.</p>
+                <p>Detection: either the <code>api</code> plan is selected, or the <code>ANTHROPIC_API_KEY</code> environment variable is present on the server.</p>
+              </InfoTooltip>
+            </div>
+            <div className="text-4xl font-bold font-mono tabular-nums text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.25)]">
+              ${spent.toFixed(2)}
+            </div>
+            <div className="text-[11px] text-muted-foreground/70 mt-1">
+              {monthly?.tokensUsed?.toLocaleString() ?? 0} tokens this month
+            </div>
+          </div>
+          <div className="flex-1 min-w-[260px]">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
+              Monthly budget
+              <InfoTooltip title="Soft budget" width={320}>
+                <p>Purely local — a visual guardrail, not a billing limit.</p>
+                <p>Anthropic won't block API calls when you hit it; this just colors the bar red so you notice.</p>
+              </InfoTooltip>
+            </div>
+            {budget > 0 ? (
+              <>
+                <div className="h-4 rounded-full bg-muted/30 overflow-hidden relative">
+                  <div className={`h-full rounded-full ${color} transition-all duration-500`} style={{ width: `${pct ?? 0}%` }} />
+                  <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-semibold text-foreground/90">
+                    ${spent.toFixed(2)} / ${budget.toFixed(2)} · {(pct ?? 0).toFixed(0)}%
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground/60">Update:</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground text-sm">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder={String(budget)}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      className="bg-card border border-border rounded-md px-2 py-1 text-sm font-mono w-24"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      onClick={() => {
+                        const n = Number(input);
+                        if (Number.isFinite(n) && n >= 0) {
+                          onSetBudget(n || null);
+                          setInput("");
+                        }
+                      }}
+                    >
+                      Save
+                    </Button>
+                    {budget > 0 && (
+                      <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => onSetBudget(null)}>
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-sm">$</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Set a budget (e.g. 50)"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  className="bg-card border border-border rounded-md px-2 py-1 text-sm font-mono flex-1 min-w-[120px]"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => {
+                    const n = Number(input);
+                    if (Number.isFinite(n) && n > 0) {
+                      onSetBudget(n);
+                      setInput("");
+                    }
+                  }}
+                >
+                  Set
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function PlanAwarenessSection() {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery<SettingsPayload>({
@@ -662,67 +970,212 @@ function PlanAwarenessSection() {
     },
   });
 
-  const selectedPlanId: PlanId | null = settings?.selectedPlanId ?? null;
+  const setBudget = useMutation({
+    mutationFn: async (usd: number | null) => {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monthlyBudget: usd }),
+      });
+      if (!res.ok) throw new Error(`PATCH failed: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+    },
+  });
 
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState<PlanId | null>(null);
+
+  const selectedPlanId: PlanId | null = settings?.selectedPlanId ?? null;
+  const monthlyBudget = settings?.monthlyBudget ?? null;
+  const isApiMode = planUsage?.billingModeDetected === "api";
+  const hist = planUsage?.historicalLimits;
+  const sampleSize = hist?.sampleSize ?? 0;
   const currentTokens = planUsage?.currentSession?.tokensUsed ?? 0;
-  const personalMedian = planUsage?.historicalLimits?.medianTokens ?? null;
-  const personalPct = personalMedian && personalMedian > 0 ? Math.min(100, (currentTokens / personalMedian) * 100) : null;
-  const ceilingColor = personalPct === null ? "bg-muted/40" :
-    personalPct >= 90 ? "bg-red-500" :
-    personalPct >= 70 ? "bg-amber-500" :
-    personalPct >= 40 ? "bg-yellow-500" : "bg-emerald-500";
+  const personalMedian = hist?.medianTokens ?? null;
+
+  // Choose the ceiling basis. Priority: personal median (once we have any hits)
+  // then plan fallback estimate (labeled `est.`), else null (no bar).
+  const estimateTokens = planUsage?.estimatedCeiling?.tokensPerSession ?? null;
+  const ceilingBasis: "personal" | "estimate" | "none" =
+    personalMedian && personalMedian > 0 ? "personal" :
+    estimateTokens && estimateTokens > 0 ? "estimate" : "none";
+  const ceilingValue = ceilingBasis === "personal" ? personalMedian :
+    ceilingBasis === "estimate" ? estimateTokens : null;
+  const ceilingPct = ceilingValue && ceilingValue > 0 ? Math.min(100, (currentTokens / ceilingValue) * 100) : null;
+  const ceilingColor = ceilingPct === null ? "bg-muted/40" :
+    ceilingPct >= 90 ? "bg-red-500" :
+    ceilingPct >= 70 ? "bg-amber-500" :
+    ceilingPct >= 40 ? "bg-yellow-500" : "bg-emerald-500";
+
+  const showPercentileBar = ceilingBasis === "personal"
+    && sampleSize >= 3
+    && hist?.p25Tokens != null
+    && hist?.p50Tokens != null
+    && hist?.p90Tokens != null;
+
+  // Zero-session empty state short-circuits the rest of the UI.
+  if (planUsage?.noSessionsYet) {
+    return (
+      <div className="space-y-6">
+        <ZeroSessionEmptyState />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Big 5h session countdown — the thing that actually matters */}
-      {planUsage?.currentSession && (
-        <Card className="animate-fade-in-up gradient-border border-emerald-500/30">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between gap-6 flex-wrap">
-              <div className="min-w-[220px]">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
-                  <Gauge className="h-3.5 w-3.5 text-emerald-400" />
-                  Current 5-hour session resets in
-                  <InfoTooltip title="The actual limit" width={380}>
-                    <p>This is the <b>rolling 5-hour session window</b>. It's what triggers Claude Code's "You've hit your limit · resets at …" message.</p>
-                    <p>It opened when you sent the first message after 5h+ of quiet. It closes exactly 5h after that opening message. Inside it, Anthropic gives you a token budget it doesn't publish — the best guess is the personal ceiling shown on the right, inferred from your own past hits.</p>
-                    <p>Reset clock below = exact wall-clock when the window closes.</p>
-                  </InfoTooltip>
-                </div>
-                <div className="text-4xl font-bold font-mono tabular-nums text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.25)]">
-                  {formatRelativeDuration(planUsage.currentSession.resetAtIso)}
-                </div>
-                <div className="text-[11px] text-muted-foreground/70 mt-1">
-                  resets at <span className="font-mono text-muted-foreground">{new Date(planUsage.currentSession.resetAtIso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>
-                  {" · "}
-                  {planUsage.currentSession.turnsInWindow} turns · {formatTokens(planUsage.currentSession.tokensUsed)} tokens · ${planUsage.currentSession.costUsd.toFixed(2)}
-                </div>
-              </div>
+      {/* First-run onboarding card (no plan selected yet) */}
+      {!selectedPlanId && !onboardingDismissed && planUsage && (
+        <BillingOnboardingCard
+          onSelectPlan={(id) => setPlan.mutate(id)}
+          onSetBudget={(usd) => setBudget.mutate(usd)}
+          dismiss={() => setOnboardingDismissed(true)}
+        />
+      )}
 
-              <div className="flex-1 min-w-[260px]">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
-                  Session token usage
-                  <InfoTooltip title="Your personal ceiling" width={380}>
-                    <p>The bar is your current-window tokens as a percentage of your <b>personal median</b> — the median token count across past moments when you <i>actually</i> hit the "You've hit your limit" message, extracted from your own session JSONL history.</p>
-                    <p>This is more honest than Anthropic's published ranges because it's based on what actually happens to <em>your</em> account.</p>
-                    <p>If sample size is low ({'<'} 3 past hits), treat the bar as a rough hint, not a rule.</p>
-                  </InfoTooltip>
-                </div>
-                <div className="h-4 rounded-full bg-muted/30 overflow-hidden relative">
-                  <div className={`h-full rounded-full ${ceilingColor} transition-all duration-500`} style={{ width: `${personalPct ?? 0}%` }} />
-                  {personalPct !== null && (
-                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-semibold text-foreground/90">
-                      {formatTokens(currentTokens)} / {formatTokens(personalMedian!)} · {personalPct.toFixed(0)}%
+      {/* API mode — pay-as-you-go card replaces the session-ceiling bar */}
+      {isApiMode ? (
+        <ApiCostCard
+          monthly={planUsage?.monthly ?? null}
+          monthlyBudget={monthlyBudget}
+          onSetBudget={(usd) => setBudget.mutate(usd)}
+        />
+      ) : (
+        /* Big 5h session countdown — always render when we have a plan
+           (fallback estimate) or a current session (either mode). Combines:
+           — a countdown on the left,
+           — a usage bar on the right that adapts by data availability:
+             personal ceiling w/ percentile view (sampleSize >= 3),
+             personal median (sampleSize 1-2),
+             fallback estimate labeled "est." (sampleSize 0 + plan picked),
+             plain "no ceiling yet" text (no plan, no history). */
+        (planUsage?.currentSession || ceilingBasis !== "none") && (
+          <Card className="animate-fade-in-up gradient-border border-emerald-500/30">
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-start justify-between gap-6 flex-wrap">
+                <div className="min-w-[220px]">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                    <Gauge className="h-3.5 w-3.5 text-emerald-400" />
+                    {planUsage?.currentSession ? "Current 5-hour session resets in" : "Next session opens when you send a message"}
+                    <InfoTooltip title="The actual limit" width={380}>
+                      <p>This is the <b>rolling 5-hour session window</b>. It's what triggers Claude Code's "You've hit your limit · resets at …" message.</p>
+                      <p>It opens the first time you send a message after a 5h+ gap, and closes exactly 5h later. Inside it, Anthropic gives you a token budget it doesn't publish — the best guess is the ceiling on the right, inferred from your own past hits when available.</p>
+                    </InfoTooltip>
+                  </div>
+                  {planUsage?.currentSession ? (
+                    <>
+                      <div className="text-4xl font-bold font-mono tabular-nums text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.25)]">
+                        {formatRelativeDuration(planUsage.currentSession.resetAtIso)}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground/70 mt-1">
+                        resets at <span className="font-mono text-muted-foreground">{new Date(planUsage.currentSession.resetAtIso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>
+                        {" · "}
+                        {planUsage.currentSession.turnsInWindow} turns · {formatTokens(planUsage.currentSession.tokensUsed)} tokens · ${planUsage.currentSession.costUsd.toFixed(2)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-sm text-muted-foreground/80 max-w-[260px]">
+                      No active window right now. Send a message in Claude Code and the 5h countdown will start.
                     </div>
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground/70 mt-1.5">
-                  {personalMedian === null ? (
-                    <>No past limit-hit events in your JSONL history — we can't personalize the ceiling yet. Keep using Claude Code; the tool will learn your limit the first time Anthropic writes a "You've hit your limit" message.</>
+
+                <div className="flex-1 min-w-[260px]">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                    Session token usage
+                    {ceilingBasis === "estimate" && (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-amber-400/30 text-amber-300">est.</Badge>
+                    )}
+                    {ceilingBasis === "personal" && sampleSize >= 3 && (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-emerald-400/30 text-emerald-300">percentiles</Badge>
+                    )}
+                    <InfoTooltip title="Session ceiling" width={380}>
+                      {ceilingBasis === "personal" ? (
+                        <>
+                          <p>Based on your own past rate-limit events. {showPercentileBar ? <>The bar shows <b>P25 / P50 / P90</b> of the tokens you used right before Anthropic threw "You've hit your limit" in past sessions. The amber band is the <b>variable zone</b> — heavy users sometimes go past P50 without a hit, rarely past P90.</> : <>Median of past hits is the single reference. Once you have 3+ hits, we'll switch to a percentile view.</>}</p>
+                          <p>Grounded in what actually happens to <em>your</em> account — more honest than Anthropic's wide published ranges.</p>
+                        </>
+                      ) : ceilingBasis === "estimate" ? (
+                        <>
+                          <p><b>Estimated</b> — no past rate-limit events in your JSONL yet, so the ceiling is a rough plan-specific guess.</p>
+                          <p>{planUsage?.estimatedCeiling.basis}</p>
+                          <p>Once Anthropic writes the first "You've hit your limit" message, we'll replace this with your real personal median.</p>
+                        </>
+                      ) : (
+                        <p>Pick a plan above to see an estimated ceiling; use Claude Code for a while to see a personalized one.</p>
+                      )}
+                    </InfoTooltip>
+                  </div>
+
+                  {showPercentileBar ? (
+                    <PercentileBar
+                      current={currentTokens}
+                      p25={hist!.p25Tokens!}
+                      p50={hist!.p50Tokens!}
+                      p90={hist!.p90Tokens!}
+                      sampleSize={sampleSize}
+                    />
+                  ) : ceilingBasis !== "none" ? (
+                    <div className="h-4 rounded-full bg-muted/30 overflow-hidden relative">
+                      <div className={`h-full rounded-full ${ceilingColor} transition-all duration-500`} style={{ width: `${ceilingPct ?? 0}%` }} />
+                      {ceilingPct !== null && ceilingValue !== null && (
+                        <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-semibold text-foreground/90">
+                          {formatTokens(currentTokens)} / {formatTokens(ceilingValue)} · {ceilingPct.toFixed(0)}%
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    <>Based on <b>{planUsage.historicalLimits.sampleSize}</b> past limit hit{planUsage.historicalLimits.sampleSize === 1 ? "" : "s"} in the last 90 days. Your median is {formatTokens(personalMedian)} tokens per 5h window.</>
+                    <div className="h-4 rounded-full bg-muted/20 flex items-center px-3 text-[10px] text-muted-foreground/60">
+                      No ceiling yet — pick a plan above.
+                    </div>
                   )}
+
+                  <div className="text-[11px] text-muted-foreground/70 mt-1.5">
+                    {ceilingBasis === "personal" ? (
+                      <>Based on <b>{sampleSize}</b> past limit hit{sampleSize === 1 ? "" : "s"} in the last 90 days. Median {formatTokens(personalMedian!)} tokens per 5h window.</>
+                    ) : ceilingBasis === "estimate" ? (
+                      <>Estimate for {planUsage?.plan?.label ?? "your plan"}. The ceiling will personalize automatically after your first observed rate-limit event.</>
+                    ) : (
+                      <>No plan selected yet. Fallback and personal ceilings both require a plan — use the selector below.</>
+                    )}
+                  </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      )}
+
+      {/* Plan-detection hint */}
+      {planUsage?.planDetectionHint && hintDismissed !== planUsage.planDetectionHint.suggestedPlanId && (
+        <Card className="animate-fade-in-up border-blue-500/30 bg-blue-500/5">
+          <CardContent className="py-3">
+            <div className="flex items-start gap-3">
+              <ArrowRight className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+              <div className="flex-1 text-xs text-foreground/80">
+                <div className="font-medium mb-0.5">Plan hint: consider {planUsage.planDetectionHint.suggestedPlanLabel}</div>
+                <p className="text-muted-foreground/80">{planUsage.planDetectionHint.reason}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => setPlan.mutate(planUsage.planDetectionHint!.suggestedPlanId)}
+                >
+                  Switch to {planUsage.planDetectionHint.suggestedPlanLabel}
+                </Button>
+                <button
+                  type="button"
+                  className="text-muted-foreground/60 hover:text-foreground"
+                  aria-label="Dismiss hint"
+                  onClick={() => setHintDismissed(planUsage.planDetectionHint!.suggestedPlanId)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </div>
           </CardContent>

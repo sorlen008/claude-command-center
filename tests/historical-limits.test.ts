@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { extractTurns } from "../server/scanner/turn-extractor";
-import { buildHistoricalLimits, parseResetTextToIso } from "../server/scanner/historical-limits";
+import { buildHistoricalLimits, parseResetTextToIso, percentile } from "../server/scanner/historical-limits";
 
 const tmpRoot = path.join(os.tmpdir(), "cc-hist-limits-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8));
 const fakeProjectsDir = path.join(tmpRoot, "projects");
@@ -97,6 +97,31 @@ describe("extractTurns — rate_limit events", () => {
   });
 });
 
+describe("percentile()", () => {
+  it("returns null on empty input", () => {
+    expect(percentile([], 0.5)).toBeNull();
+  });
+
+  it("returns the min for p=0 on a single-element array", () => {
+    expect(percentile([42], 0.5)).toBe(42);
+  });
+
+  it("is monotonic across p25/p50/p90", () => {
+    const xs = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+    const p25 = percentile(xs, 0.25)!;
+    const p50 = percentile(xs, 0.5)!;
+    const p90 = percentile(xs, 0.9)!;
+    expect(p25).toBeLessThanOrEqual(p50);
+    expect(p50).toBeLessThanOrEqual(p90);
+  });
+
+  it("clamps rank to valid indices for tiny samples", () => {
+    // Nearest-rank with n=2: p25 → index 0, p90 → index 1.
+    expect(percentile([1, 2], 0.25)).toBe(1);
+    expect(percentile([1, 2], 0.9)).toBe(2);
+  });
+});
+
 describe("parseResetTextToIso", () => {
   it("returns null for empty or malformed input", () => {
     expect(parseResetTextToIso("", "2026-04-15T10:00:00Z")).toBeNull();
@@ -182,6 +207,33 @@ describe("buildHistoricalLimits", () => {
     expect(r.medianTokens).toBe(60000);
     // Most recent is mult-c on 2026-04-14
     expect(r.mostRecent?.hitAtIso).toBe("2026-04-14T09:00:00Z");
+  });
+
+  it("exposes p25/p50/p90 percentiles when there are enough hits", async () => {
+    // 5 hits with token counts 10k, 20k, 30k, 40k, 100k (sorted).
+    // p25 = ceil(0.25*5)-1 = 1 → 20k; p50 = ceil(0.5*5)-1 = 2 → 30k; p90 = ceil(0.9*5)-1 = 4 → 100k.
+    const hits = [10000, 20000, 30000, 40000, 100000];
+    const sessions = hits.map((tokens, i) => writeSession(`pct-${i}`, [
+      assistantLine(`2026-04-${10 + i}T08:00:00Z`, "claude-sonnet-4-6", { input: tokens - 1000, output: 1000 }),
+      rateLimitLine(`2026-04-${10 + i}T09:00:00Z`),
+    ]));
+    const r = await buildHistoricalLimits(sessions, { claudeProjectsDir: fakeProjectsDir, now: new Date("2026-04-20T12:00:00Z") });
+    expect(r.sampleSize).toBe(5);
+    expect(r.p25Tokens).toBe(20000);
+    expect(r.p50Tokens).toBe(30000);
+    expect(r.p90Tokens).toBe(100000);
+    // p50 and medianTokens should agree for odd-length samples.
+    expect(r.p50Tokens).toBe(r.medianTokens);
+  });
+
+  it("leaves percentile fields null when there are no hits", async () => {
+    const sess = writeSession("none", [
+      assistantLine("2026-04-15T10:00:00Z", "claude-sonnet-4-6", { input: 100, output: 50 }),
+    ]);
+    const r = await buildHistoricalLimits([sess], { claudeProjectsDir: fakeProjectsDir, now: new Date("2026-04-16T12:00:00Z") });
+    expect(r.p25Tokens).toBeNull();
+    expect(r.p50Tokens).toBeNull();
+    expect(r.p90Tokens).toBeNull();
   });
 
   it("reports opus share correctly", async () => {

@@ -128,6 +128,18 @@ function median(values: number[]): number | null {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+/**
+ * Nearest-rank percentile. Returns null if the list is empty.
+ * p is in [0, 1]. For small samples (n < 4) the interpretation is loose:
+ * p25 ≈ min, p90 ≈ max. Callers must disclose sample size to the user.
+ */
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const rank = Math.max(0, Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1));
+  return sorted[rank];
+}
+
 async function collectAllForSession(sess: SessionMetaLite, claudeProjectsDir: string): Promise<{ turns: TurnWithModel[]; events: RateLimitEvent[] }> {
   const parent = await extractTurns(sess.filePath);
   const subDir = path.join(claudeProjectsDir, sess.projectKey, sess.id, "subagents");
@@ -192,6 +204,9 @@ export async function buildHistoricalLimits(
   const hourSamples = hits.filter(h => h.hoursInWindow > 0).map(h => h.hoursInWindow);
   const medianTokens = median(tokenSamples);
   const medianHours = median(hourSamples);
+  const p25 = percentile(tokenSamples, 0.25);
+  const p50 = percentile(tokenSamples, 0.5);
+  const p90 = percentile(tokenSamples, 0.9);
 
   const thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
   const last30 = hits.filter(h => Date.parse(h.hitAtIso) >= thirtyDaysAgo);
@@ -205,6 +220,9 @@ export async function buildHistoricalLimits(
     totalHitsLast30Days: last30.length,
     medianTokens: medianTokens !== null ? Math.round(medianTokens) : null,
     medianHours: medianHours !== null ? Math.round(medianHours * 10) / 10 : null,
+    p25Tokens: p25 !== null ? Math.round(p25) : null,
+    p50Tokens: p50 !== null ? Math.round(p50) : null,
+    p90Tokens: p90 !== null ? Math.round(p90) : null,
     mostRecent: hits[0] || null,
     opusShareAtHitPct,
     sampleSize: hits.length,

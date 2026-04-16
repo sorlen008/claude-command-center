@@ -839,9 +839,40 @@ export interface HistoricalLimits {
   totalHitsLast30Days: number;
   medianTokens: number | null;         // personal ceiling — median tokens used at the moment of past hits
   medianHours: number | null;
+  /** 25th percentile of tokens-in-window across past hits — "safe zone" floor. */
+  p25Tokens: number | null;
+  /** 50th percentile (= medianTokens, duplicated for clarity when rendering percentile marks). */
+  p50Tokens: number | null;
+  /** 90th percentile — users routinely pass this without being throttled. The p50-p90 band is the "variable zone". */
+  p90Tokens: number | null;
   mostRecent: HistoricalLimitHit | null;
   opusShareAtHitPct: number | null;    // % of past hits that were Opus-dominant
   sampleSize: number;
+}
+
+/**
+ * Zero-history fallback ceiling. Populated when the user has no past rate-limit
+ * hits to personalize from. The estimate is plan-aware and labeled `est.` in the
+ * UI so users know it's not grounded in their own data.
+ */
+export interface EstimatedCeiling {
+  /** Estimated tokens per session window, derived from the user's selected plan. Null if no plan. */
+  tokensPerSession: number | null;
+  /** Rough basis sentence shown in a tooltip. */
+  basis: string;
+  /** Always "estimate" — exists for symmetry with plan-catalog confidence levels. */
+  confidence: "estimate" | "unknown";
+}
+
+/**
+ * Plan-detection hint. Produced when the user has ≥5 past hits and the observed
+ * median is materially out of range for their currently selected plan.
+ */
+export interface PlanDetectionHint {
+  /** The plan id we think matches the user's observed usage best. */
+  suggestedPlanId: PlanId;
+  suggestedPlanLabel: string;
+  reason: string;
 }
 
 export interface BuildupPoint {
@@ -880,6 +911,12 @@ export interface PlanUsageResponse {
   weeklyBuildup: BuildupPoint[];
   monthly: PeriodUsage | null;
   historicalLimits: HistoricalLimits;
+  /** Fallback ceiling when sampleSize === 0 and the user still wants a usage bar. */
+  estimatedCeiling: EstimatedCeiling;
+  /** Non-null when the user's observed median suggests a different plan than the one selected. */
+  planDetectionHint: PlanDetectionHint | null;
+  /** True when the user has zero session JSONL files at all — drives the welcome empty-state. */
+  noSessionsYet: boolean;
   peakHours: PeakHoursGrid;
   throttleWindows: ThrottleWindow[];
   predictedLimitHit: PredictedLimitHit | null;
