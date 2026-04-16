@@ -823,6 +823,27 @@ export interface PeriodUsage {
   opusHours: number;
 }
 
+export interface HistoricalLimitHit {
+  hitAtIso: string;            // when Anthropic wrote the "you've hit your limit" message
+  resetText: string;           // the "resets 12am (America/Los_Angeles)" phrase, verbatim
+  resetAtIso: string | null;   // parsed to ISO when possible
+  tokensInWindow: number;      // total active tokens in the 5h window that led to the hit
+  hoursInWindow: number;       // estimated active hours in that window
+  dominantModel: string;       // which model family produced most of the tokens in-window
+  turnsInWindow: number;
+}
+
+export interface HistoricalLimits {
+  hits: HistoricalLimitHit[];          // newest-first, last 90 days
+  totalHits: number;
+  totalHitsLast30Days: number;
+  medianTokens: number | null;         // personal ceiling — median tokens used at the moment of past hits
+  medianHours: number | null;
+  mostRecent: HistoricalLimitHit | null;
+  opusShareAtHitPct: number | null;    // % of past hits that were Opus-dominant
+  sampleSize: number;
+}
+
 export interface BuildupPoint {
   date: string;                // YYYY-MM-DD, one per day
   sonnetHours: number;         // hours accrued that day
@@ -858,6 +879,7 @@ export interface PlanUsageResponse {
   weekly: PeriodUsage | null;
   weeklyBuildup: BuildupPoint[];
   monthly: PeriodUsage | null;
+  historicalLimits: HistoricalLimits;
   peakHours: PeakHoursGrid;
   throttleWindows: ThrottleWindow[];
   predictedLimitHit: PredictedLimitHit | null;

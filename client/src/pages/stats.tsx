@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { formatBytes, formatDayLabel, isToday, downloadCSV } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Download, RefreshCw, AlertCircle } from "lucide-react";
+import { Download, RefreshCw, AlertCircle, Gauge, History } from "lucide-react";
 import { InfoTooltip } from "@/components/info-tooltip";
 
 // ---- Types ----
@@ -335,6 +335,25 @@ interface PlanCatalogPlan {
 interface SessionWindowUsage { windowStartIso: string; windowEndIso: string; resetAtIso: string; tokensUsed: number; costUsd: number; turnsInWindow: number; }
 interface PeriodUsagePayload { periodStartIso: string; periodEndIso: string; tokensUsed: number; costUsd: number; sonnetHours: number; opusHours: number; }
 interface BuildupPointPayload { date: string; sonnetHours: number; opusHours: number; costUsd: number; cumSonnetHours: number; cumOpusHours: number; cumCostUsd: number; }
+interface HistoricalLimitHitPayload {
+  hitAtIso: string;
+  resetText: string;
+  resetAtIso: string | null;
+  tokensInWindow: number;
+  hoursInWindow: number;
+  dominantModel: string;
+  turnsInWindow: number;
+}
+interface HistoricalLimitsPayload {
+  hits: HistoricalLimitHitPayload[];
+  totalHits: number;
+  totalHitsLast30Days: number;
+  medianTokens: number | null;
+  medianHours: number | null;
+  mostRecent: HistoricalLimitHitPayload | null;
+  opusShareAtHitPct: number | null;
+  sampleSize: number;
+}
 interface ThrottleWindow { daysOfWeek: number[]; startHourUtc: number; endHourUtc: number; note: string; }
 interface PredictedLimit { periodicity: string; hitAtIso: string; confidence: string; note: string; }
 interface PeakHoursPayload { costByDayHour: number[][]; tokensByDayHour: number[][]; timezone: string; }
@@ -347,6 +366,7 @@ interface PlanUsagePayload {
   weekly: PeriodUsagePayload | null;
   weeklyBuildup: BuildupPointPayload[];
   monthly: PeriodUsagePayload | null;
+  historicalLimits: HistoricalLimitsPayload;
   peakHours: PeakHoursPayload;
   throttleWindows: ThrottleWindow[];
   predictedLimitHit: PredictedLimit | null;
@@ -644,8 +664,71 @@ function PlanAwarenessSection() {
 
   const selectedPlanId: PlanId | null = settings?.selectedPlanId ?? null;
 
+  const currentTokens = planUsage?.currentSession?.tokensUsed ?? 0;
+  const personalMedian = planUsage?.historicalLimits?.medianTokens ?? null;
+  const personalPct = personalMedian && personalMedian > 0 ? Math.min(100, (currentTokens / personalMedian) * 100) : null;
+  const ceilingColor = personalPct === null ? "bg-muted/40" :
+    personalPct >= 90 ? "bg-red-500" :
+    personalPct >= 70 ? "bg-amber-500" :
+    personalPct >= 40 ? "bg-yellow-500" : "bg-emerald-500";
+
   return (
     <div className="space-y-6">
+      {/* Big 5h session countdown — the thing that actually matters */}
+      {planUsage?.currentSession && (
+        <Card className="animate-fade-in-up gradient-border border-emerald-500/30">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between gap-6 flex-wrap">
+              <div className="min-w-[220px]">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                  <Gauge className="h-3.5 w-3.5 text-emerald-400" />
+                  Current 5-hour session resets in
+                  <InfoTooltip title="The actual limit" width={380}>
+                    <p>This is the <b>rolling 5-hour session window</b>. It's what triggers Claude Code's "You've hit your limit · resets at …" message.</p>
+                    <p>It opened when you sent the first message after 5h+ of quiet. It closes exactly 5h after that opening message. Inside it, Anthropic gives you a token budget it doesn't publish — the best guess is the personal ceiling shown on the right, inferred from your own past hits.</p>
+                    <p>Reset clock below = exact wall-clock when the window closes.</p>
+                  </InfoTooltip>
+                </div>
+                <div className="text-4xl font-bold font-mono tabular-nums text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.25)]">
+                  {formatRelativeDuration(planUsage.currentSession.resetAtIso)}
+                </div>
+                <div className="text-[11px] text-muted-foreground/70 mt-1">
+                  resets at <span className="font-mono text-muted-foreground">{new Date(planUsage.currentSession.resetAtIso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>
+                  {" · "}
+                  {planUsage.currentSession.turnsInWindow} turns · {formatTokens(planUsage.currentSession.tokensUsed)} tokens · ${planUsage.currentSession.costUsd.toFixed(2)}
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-[260px]">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                  Session token usage
+                  <InfoTooltip title="Your personal ceiling" width={380}>
+                    <p>The bar is your current-window tokens as a percentage of your <b>personal median</b> — the median token count across past moments when you <i>actually</i> hit the "You've hit your limit" message, extracted from your own session JSONL history.</p>
+                    <p>This is more honest than Anthropic's published ranges because it's based on what actually happens to <em>your</em> account.</p>
+                    <p>If sample size is low ({'<'} 3 past hits), treat the bar as a rough hint, not a rule.</p>
+                  </InfoTooltip>
+                </div>
+                <div className="h-4 rounded-full bg-muted/30 overflow-hidden relative">
+                  <div className={`h-full rounded-full ${ceilingColor} transition-all duration-500`} style={{ width: `${personalPct ?? 0}%` }} />
+                  {personalPct !== null && (
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-semibold text-foreground/90">
+                      {formatTokens(currentTokens)} / {formatTokens(personalMedian!)} · {personalPct.toFixed(0)}%
+                    </div>
+                  )}
+                </div>
+                <div className="text-[11px] text-muted-foreground/70 mt-1.5">
+                  {personalMedian === null ? (
+                    <>No past limit-hit events in your JSONL history — we can't personalize the ceiling yet. Keep using Claude Code; the tool will learn your limit the first time Anthropic writes a "You've hit your limit" message.</>
+                  ) : (
+                    <>Based on <b>{planUsage.historicalLimits.sampleSize}</b> past limit hit{planUsage.historicalLimits.sampleSize === 1 ? "" : "s"} in the last 90 days. Your median is {formatTokens(personalMedian)} tokens per 5h window.</>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Plan selector */}
       <Card className="animate-fade-in-up">
         <CardHeader className="pb-3">
@@ -696,6 +779,76 @@ function PlanAwarenessSection() {
           )}
         </CardContent>
       </Card>
+
+      {/* Personal limit history — verified evidence from your own past limit hits */}
+      {planUsage && planUsage.historicalLimits.sampleSize > 0 && (
+        <Card className="animate-fade-in-up" style={{ animationDelay: "50ms" }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <History className="h-4 w-4 text-blue-400" />
+              Your personal limit history
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1">
+                {planUsage.historicalLimits.totalHits} hit{planUsage.historicalLimits.totalHits === 1 ? "" : "s"} / 90 days
+              </Badge>
+              <InfoTooltip title="Where this comes from" width={380}>
+                <p>Every time Anthropic sent "You've hit your limit · resets …" to Claude Code, the message was written into your session JSONL with <code>error: rate_limit</code>. This card parses those events from the last 90 days.</p>
+                <p>For each hit, we reconstruct the rolling 5-hour window that led to it and sum the tokens + estimated model hours inside it. That gives you the personal ceiling — how many tokens your account actually allows per session before Anthropic throttles.</p>
+                <p>Stats here are more trustworthy than Anthropic's published ranges because they're grounded in your real usage.</p>
+              </InfoTooltip>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Median ceiling</div>
+                <div className="font-mono tabular-nums text-xl mt-1">{planUsage.historicalLimits.medianTokens !== null ? formatTokens(planUsage.historicalLimits.medianTokens) : "—"}</div>
+                <div className="text-[10px] text-muted-foreground/60 mt-0.5">tokens per 5h window</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Median hours at hit</div>
+                <div className="font-mono tabular-nums text-xl mt-1">{planUsage.historicalLimits.medianHours !== null ? `${planUsage.historicalLimits.medianHours}h` : "—"}</div>
+                <div className="text-[10px] text-muted-foreground/60 mt-0.5">estimated active time</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Hits last 30d</div>
+                <div className="font-mono tabular-nums text-xl mt-1">{planUsage.historicalLimits.totalHitsLast30Days}</div>
+                <div className="text-[10px] text-muted-foreground/60 mt-0.5">frequency indicator</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Opus share at hit</div>
+                <div className="font-mono tabular-nums text-xl mt-1">{planUsage.historicalLimits.opusShareAtHitPct !== null ? `${planUsage.historicalLimits.opusShareAtHitPct.toFixed(0)}%` : "—"}</div>
+                <div className="text-[10px] text-muted-foreground/60 mt-0.5">hits dominated by Opus</div>
+              </div>
+            </div>
+
+            {planUsage.historicalLimits.hits.length > 0 && (
+              <div className="border-t border-border/30 pt-3">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Recent hits (newest first)</div>
+                <div className="space-y-0.5 max-h-[220px] overflow-auto">
+                  <div className="flex items-center text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider px-2 py-1.5 sticky top-0 bg-card">
+                    <span className="w-32">When</span>
+                    <span className="w-32">Reset text</span>
+                    <span className="w-20 text-right">Tokens</span>
+                    <span className="w-16 text-right">Hours</span>
+                    <span className="w-16 text-right">Turns</span>
+                    <span className="w-16 text-right">Model</span>
+                  </div>
+                  {planUsage.historicalLimits.hits.slice(0, 10).map((h, i) => (
+                    <div key={`${h.hitAtIso}-${i}`} className="flex items-center text-xs px-2 py-1.5 rounded-md hover:bg-accent/20">
+                      <span className="w-32 font-mono text-muted-foreground">{new Date(h.hitAtIso).toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="w-32 text-muted-foreground font-mono text-[11px] truncate">{h.resetText || "—"}</span>
+                      <span className="w-20 text-right font-mono tabular-nums text-muted-foreground">{formatTokens(h.tokensInWindow)}</span>
+                      <span className="w-16 text-right font-mono tabular-nums text-muted-foreground">{h.hoursInWindow}h</span>
+                      <span className="w-16 text-right font-mono tabular-nums text-muted-foreground">{h.turnsInWindow}</span>
+                      <span className="w-16 text-right font-mono tabular-nums text-[10px] text-muted-foreground uppercase">{h.dominantModel}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Plan limit bar */}
       {selectedPlanId && planUsage && planUsage.plan && (

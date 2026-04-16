@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SHORTCUT_SECTIONS } from "@/components/keyboard-shortcuts";
 import {
   LifeBuoy,
   Search,
@@ -43,6 +44,9 @@ type Topic = {
   q: string;
   a: React.ReactNode;
   level: Level;
+  // Optional plain-text shadow of `a` for future consumers (Ctrl+K index, snapshot
+  // tests) that can't walk ReactNode. Falls back to extractText(a) if unset.
+  searchText?: string;
 };
 
 type Category = {
@@ -71,6 +75,27 @@ const LEVEL_STYLE: Record<Level, { label: string; dot: string; text: string }> =
   intermediate: { label: "I", dot: "bg-amber-500",  text: "text-amber-400"  },
   advanced:     { label: "A", dot: "bg-purple-500", text: "text-purple-400" },
 };
+
+// Slugify a topic question for stable DOM + URL keys. Index-based keys (v1)
+// broke under difficulty filtering because filtered arrays reorder the index
+// domain. Slug keys are stable across sort/filter.
+function slugifyTopic(q: string): string {
+  return q
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "topic";
+}
+
+function topicKey(categoryId: string, topic: Topic): string {
+  return `${categoryId}-${slugifyTopic(topic.q)}`;
+}
+
+function isLevelVisible(topicLevel: Level, filter: "beginner" | "all" | "advanced"): boolean {
+  if (filter === "beginner") return topicLevel === "beginner";
+  if (filter === "advanced") return topicLevel !== "beginner";
+  return true;
+}
 
 // -----------------------------------------------------------------------------
 // Content — 15 categories, ~107 topics. Every factual claim below has been
@@ -825,37 +850,26 @@ const GLOSSARY: GlossaryEntry[] = [
 ];
 
 // -----------------------------------------------------------------------------
-// Cheat Sheet data. Keyboard shortcuts duplicated from
-// client/src/components/keyboard-shortcuts.tsx — keep in sync if that file
-// changes. URL params and env vars sourced from CLAUDE.md.
+// Cheat Sheet data. Keyboard shortcuts are derived from SHORTCUT_SECTIONS in
+// keyboard-shortcuts.tsx so the overlay and the Cheat Sheet can never drift.
+// Add new shortcuts there; they'll appear here automatically.
+// URL params and env vars sourced from CLAUDE.md.
 // -----------------------------------------------------------------------------
 
-const CHEAT_SHORTCUTS: { title: string; hint?: string; items: { keys: string[]; label: string }[] }[] = [
-  {
-    title: "Navigation",
-    hint: "Press G then a letter within 1 second",
-    items: [
-      { keys: ["G", "D"], label: "Dashboard" },
-      { keys: ["G", "S"], label: "Sessions" },
-      { keys: ["G", "A"], label: "Agents" },
-      { keys: ["G", "G"], label: "Graph" },
-      { keys: ["G", "L"], label: "Live" },
-      { keys: ["G", "M"], label: "MCP Servers" },
-      { keys: ["G", "P"], label: "Projects" },
-      { keys: ["G", "K"], label: "Skills" },
-    ],
-  },
-  {
-    title: "Global",
-    items: [
-      { keys: ["Ctrl", "K"], label: "Global search" },
-      { keys: ["Ctrl", "L"], label: "Toggle sidebar" },
-      { keys: ["Ctrl", "B"], label: "Toggle sidebar (alt)" },
-      { keys: ["?"], label: "Keyboard shortcuts overlay" },
-      { keys: ["Esc"], label: "Close dialogs and sheets" },
-    ],
-  },
+// Extra entries documented in the Cheat Sheet but not in the compact `?` overlay.
+const CHEAT_EXTRA_GLOBAL: { keys: string[]; label: string }[] = [
+  { keys: ["Ctrl", "B"], label: "Toggle sidebar (alt)" },
+  { keys: ["Esc"], label: "Close dialogs and sheets" },
 ];
+
+const CHEAT_SHORTCUTS: { title: string; hint?: string; items: { keys: string[]; label: string }[] }[] =
+  SHORTCUT_SECTIONS.map((section) => ({
+    title: section.title,
+    hint: section.description,
+    items: section.title === "Global"
+      ? [...section.shortcuts, ...CHEAT_EXTRA_GLOBAL]
+      : [...section.shortcuts],
+  }));
 
 const CHEAT_URL_PARAMS: { url: string; effect: string }[] = [
   { url: "/sessions?project=<name>", effect: "Pre-filter the Sessions page to one project" },
@@ -902,6 +916,26 @@ function extractText(node: React.ReactNode): string {
   return "";
 }
 
+// Search body text for a topic. Prefers the explicit searchText field when
+// authors supply it; falls back to walking the ReactNode tree.
+function topicBodyText(topic: Topic): string {
+  return topic.searchText ?? extractText(topic.a);
+}
+
+// Rank a topic against a query. Lower is better. Used for search ranking so
+// exact-title matches beat partial body matches.
+// 0 = exact title, 1 = title starts-with, 2 = title contains, 3 = body contains, 99 = no match.
+function rankTopic(topic: Topic, q: string): number {
+  if (!q) return 0;
+  const qLower = q.toLowerCase();
+  const qTitle = topic.q.toLowerCase();
+  if (qTitle === qLower) return 0;
+  if (qTitle.startsWith(qLower)) return 1;
+  if (qTitle.includes(qLower)) return 2;
+  if (topicBodyText(topic).toLowerCase().includes(qLower)) return 3;
+  return 99;
+}
+
 function highlight(text: string, q: string): React.ReactNode {
   if (!q) return text;
   const lower = text.toLowerCase();
@@ -922,20 +956,62 @@ function highlight(text: string, q: string): React.ReactNode {
 
 type TabId = "first-5-minutes" | "browse" | "glossary" | "cheat-sheet";
 
-function parseHash(hash: string): {
+export function parseHash(hash: string): {
   tab: TabId;
   category?: string;
   topicIndex?: number;
+  topicSlug?: string;
   query?: string;
 } {
-  const raw = hash.replace(/^#/, "").trim();
+  // Strip ALL leading # characters — browsers sometimes produce /help## when
+  // setting an empty hash, and a single-strip leaves "#foo" which then
+  // pollutes activeCategory.
+  const raw = hash.replace(/^#+/, "").trim();
   if (!raw) return { tab: "browse" };
   if (raw === "first-5-minutes") return { tab: "first-5-minutes" };
   if (raw === "glossary") return { tab: "glossary" };
   if (raw === "cheat-sheet") return { tab: "cheat-sheet" };
-  if (raw.startsWith("q=")) return { tab: "browse", query: decodeURIComponent(raw.slice(2)) };
+  if (raw.startsWith("q=")) {
+    try {
+      return { tab: "browse", query: decodeURIComponent(raw.slice(2)) };
+    } catch {
+      return { tab: "browse" };
+    }
+  }
   const [cat, topic] = raw.split(":");
-  return { tab: "browse", category: cat, topicIndex: topic ? Number(topic) : undefined };
+  const validCat = CATEGORIES.some((c) => c.id === cat) ? cat : undefined;
+  if (!validCat) return { tab: "browse" };
+  if (topic == null) return { tab: "browse", category: validCat };
+  // Topic specifier can be either a numeric index (back-compat with v2.0
+  // /help#sessions:3 deep-links) or a slug string (/help#sessions:what-is-a-session).
+  const asNum = Number(topic);
+  if (!Number.isNaN(asNum) && /^\d+$/.test(topic.trim())) {
+    return { tab: "browse", category: validCat, topicIndex: asNum };
+  }
+  return { tab: "browse", category: validCat, topicSlug: topic };
+}
+
+// Resolve a parsed topic specifier to its stable slug key. Returns null if the
+// category has no such topic (invalid deep-link).
+function resolveTopicKey(
+  categoryId: string | undefined,
+  topicIndex: number | undefined,
+  topicSlug: string | undefined,
+): { key: string; topic: Topic } | null {
+  if (!categoryId) return null;
+  const cat = CATEGORIES.find((c) => c.id === categoryId);
+  if (!cat) return null;
+  if (topicIndex != null) {
+    const topic = cat.topics[topicIndex];
+    if (!topic) return null;
+    return { key: topicKey(categoryId, topic), topic };
+  }
+  if (topicSlug) {
+    const topic = cat.topics.find((t) => slugifyTopic(t.q) === topicSlug);
+    if (!topic) return null;
+    return { key: topicKey(categoryId, topic), topic };
+  }
+  return null;
 }
 
 // -----------------------------------------------------------------------------
@@ -949,39 +1025,40 @@ export default function HelpCenter() {
   const [levelFilter, setLevelFilter] = useState<"beginner" | "all" | "advanced">("all");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [filterResetNotice, setFilterResetNotice] = useState<string | null>(null);
   const hashWriteTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // Shared resolver — applies a parsed hash to component state, including
+  // auto-resetting the difficulty filter if it would hide the deep-linked topic.
+  const applyParsedHash = useCallback((p: ReturnType<typeof parseHash>) => {
+    setTab(p.tab);
+    if (p.query) setQuery(p.query);
+    if (!p.category) return;
+    setActiveCategory(p.category);
+    const resolved = resolveTopicKey(p.category, p.topicIndex, p.topicSlug);
+    if (!resolved) return;
+    setExpanded(new Set([resolved.key]));
+    setLevelFilter((current) => {
+      if (isLevelVisible(resolved.topic.level, current)) return current;
+      setFilterResetNotice(
+        `Showing all difficulties so this ${resolved.topic.level} topic is visible.`,
+      );
+      return "all";
+    });
+    // Scroll into view after the filter/expand state has rendered.
+    setTimeout(() => {
+      const el = document.querySelector(`[data-help-topic="${resolved.key}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+  }, []);
 
   // --- Read hash on mount ---------------------------------------------------
   useEffect(() => {
-    const parsed = parseHash(window.location.hash);
-    setTab(parsed.tab);
-    if (parsed.query) setQuery(parsed.query);
-    if (parsed.category) {
-      setActiveCategory(parsed.category);
-      if (parsed.topicIndex != null && !Number.isNaN(parsed.topicIndex)) {
-        setExpanded(new Set([`${parsed.category}-${parsed.topicIndex}`]));
-        // Scroll the topic into view after render
-        setTimeout(() => {
-          const el = document.querySelector(`[data-help-topic="${parsed.category}-${parsed.topicIndex}"]`);
-          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 100);
-      }
-    }
-    // Listen for hash changes (e.g. from another component linking to /help#...)
-    const onHashChange = () => {
-      const p = parseHash(window.location.hash);
-      setTab(p.tab);
-      if (p.query) setQuery(p.query);
-      if (p.category) {
-        setActiveCategory(p.category);
-        if (p.topicIndex != null && !Number.isNaN(p.topicIndex)) {
-          setExpanded(new Set([`${p.category}-${p.topicIndex}`]));
-        }
-      }
-    };
+    applyParsedHash(parseHash(window.location.hash));
+    const onHashChange = () => applyParsedHash(parseHash(window.location.hash));
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
+  }, [applyParsedHash]);
 
   // --- Write hash on state change (debounced) -------------------------------
   useEffect(() => {
@@ -1005,24 +1082,23 @@ export default function HelpCenter() {
   // --- Level filtering + search --------------------------------------------
   const q = query.trim().toLowerCase();
   const visible = useMemo(() => {
+    const order = { beginner: 0, intermediate: 1, advanced: 2 } as const;
     return CATEGORIES.map((cat) => ({
       ...cat,
       topics: cat.topics
-        .filter((t) => {
-          if (levelFilter === "beginner" && t.level !== "beginner") return false;
-          if (levelFilter === "advanced" && t.level === "beginner") return false;
-          return true;
-        })
-        .filter((t) => {
-          if (!q) return true;
-          if (t.q.toLowerCase().includes(q)) return true;
-          return extractText(t.a).toLowerCase().includes(q);
-        })
-        // Sort beginner-first within category
+        .filter((t) => isLevelVisible(t.level, levelFilter))
+        .map((t) => ({ t, rank: rankTopic(t, q) }))
+        .filter(({ rank }) => rank < 99)
         .sort((a, b) => {
-          const order = { beginner: 0, intermediate: 1, advanced: 2 } as const;
-          return order[a.level] - order[b.level];
-        }),
+          // When searching, rank wins so exact-title matches float to the top.
+          // Otherwise, keep the established beginner-first-within-category order.
+          if (q) {
+            if (a.rank !== b.rank) return a.rank - b.rank;
+            return order[a.t.level] - order[b.t.level];
+          }
+          return order[a.t.level] - order[b.t.level];
+        })
+        .map(({ t }) => t),
     })).filter((cat) => cat.topics.length > 0);
   }, [q, levelFilter]);
 
@@ -1033,6 +1109,17 @@ export default function HelpCenter() {
       g.term.toLowerCase().includes(q) || extractText(g.definition).toLowerCase().includes(q)
     );
   }, [q]);
+
+  // --- First 5 Minutes helpers ---------------------------------------------
+  const triggerGlobalSearch = useCallback(() => {
+    // Blur whatever has focus (typically this page's own Search input) so the
+    // synthetic Ctrl+K keystroke is interpreted by GlobalSearch, not stolen
+    // by the input we're dispatching from.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
+  }, []);
 
   const totalVisibleTopics = visible.reduce((sum, c) => sum + c.topics.length, 0);
 
@@ -1046,9 +1133,6 @@ export default function HelpCenter() {
   };
 
   // --- First 5 Minutes walkthrough data (needs setLocation/etc. in closure) -
-  const triggerGlobalSearch = useCallback(() => {
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
-  }, []);
   const firstSteps: FirstStep[] = [
     {
       n: 1,
@@ -1103,11 +1187,20 @@ export default function HelpCenter() {
           </div>
         </div>
         {/* Level filter */}
-        <div className="flex items-center gap-1 bg-muted/50 rounded-md p-0.5 shrink-0">
+        <div
+          className="flex items-center gap-1 bg-muted/50 rounded-md p-0.5 shrink-0"
+          role="radiogroup"
+          aria-label="Difficulty filter"
+        >
           {(["beginner", "all", "advanced"] as const).map((lvl) => (
             <button
               key={lvl}
-              onClick={() => setLevelFilter(lvl)}
+              role="radio"
+              aria-checked={levelFilter === lvl}
+              onClick={() => {
+                setLevelFilter(lvl);
+                setFilterResetNotice(null);
+              }}
               className={`px-3 py-1 text-xs rounded-sm transition-colors capitalize ${
                 levelFilter === lvl
                   ? "bg-background text-foreground shadow-sm"
@@ -1126,11 +1219,30 @@ export default function HelpCenter() {
         <Input
           placeholder="Search topics, glossary, and cheat sheet…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            // Clear active category when typing — otherwise a stale selection
+            // re-activates once the search is cleared, confusing the user.
+            if (e.target.value) setActiveCategory(null);
+          }}
           className="pl-9 h-10"
           autoFocus
+          aria-label="Search help topics"
         />
       </div>
+
+      {filterResetNotice && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 text-xs text-amber-200 flex items-center justify-between gap-3">
+          <span>{filterResetNotice}</span>
+          <button
+            type="button"
+            onClick={() => setFilterResetNotice(null)}
+            className="text-amber-300/70 hover:text-amber-200 text-[11px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
@@ -1249,8 +1361,8 @@ export default function HelpCenter() {
                         </Badge>
                       </header>
                       <div className="divide-y divide-border/40">
-                        {category.topics.map((topic, i) => {
-                          const key = `${category.id}-${i}`;
+                        {category.topics.map((topic) => {
+                          const key = topicKey(category.id, topic);
                           const isOpen = expanded.has(key) || !!q;
                           const lvl = LEVEL_STYLE[topic.level];
                           return (

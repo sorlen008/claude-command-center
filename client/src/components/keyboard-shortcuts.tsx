@@ -7,7 +7,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-const SHORTCUT_SECTIONS = [
+export const SHORTCUT_SECTIONS = [
   {
     title: "Navigation",
     description: "Press G then a letter",

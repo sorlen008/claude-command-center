@@ -24,9 +24,22 @@ export interface RawErrorEvent {
   text: string;
 }
 
+/**
+ * Rate-limit event Anthropic wrote into the JSONL when Claude Code got throttled.
+ * Identified by `record.type === "assistant" && record.error === "rate_limit" &&
+ * record.isApiErrorMessage === true`. The text typically reads
+ * `"You've hit your limit · resets <time> (<tz>)"`.
+ */
+export interface RateLimitEvent {
+  ts: string;
+  resetText: string;       // e.g. "12am (America/Los_Angeles)"
+  fullMessage: string;     // raw content text
+}
+
 export interface ExtractResult {
   turns: RawTurn[];
   errors: RawErrorEvent[];
+  rateLimitEvents: RateLimitEvent[];
   firstUserMessage: string;
   isSidechain: boolean;
   entrypoint: string;
@@ -49,6 +62,7 @@ export function extractTurns(filePath: string): Promise<ExtractResult> {
   return new Promise((resolve) => {
     const turns: RawTurn[] = [];
     const errors: RawErrorEvent[] = [];
+    const rateLimitEvents: RateLimitEvent[] = [];
     let firstUserMessage = "";
     let isSidechain = false;
     let entrypoint = "";
@@ -75,6 +89,30 @@ export function extractTurns(filePath: string): Promise<ExtractResult> {
           if (record.type === "assistant") {
             const msg = record.message;
             if (!msg || typeof msg !== "object") return;
+
+            // Detect Anthropic-written rate-limit errors (synthetic assistant message).
+            if (record.error === "rate_limit" && record.isApiErrorMessage === true) {
+              const content = msg.content;
+              let fullText = "";
+              if (Array.isArray(content)) {
+                for (const item of content) {
+                  if (item && typeof item === "object" && (item as { type?: string }).type === "text") {
+                    const t = (item as { text?: string }).text;
+                    if (typeof t === "string") fullText += t;
+                  }
+                }
+              }
+              // Extract the "resets X (tz)" phrase from `You've hit your limit · resets 12am (America/Los_Angeles)`
+              const match = fullText.match(/resets?\s+([0-9]{1,2}(?::[0-9]{2})?\s*(?:am|pm)?\s*\([^)]+\))/i);
+              rateLimitEvents.push({
+                ts,
+                resetText: match ? match[1] : "",
+                fullMessage: fullText.slice(0, 300),
+              });
+              // Synthetic rate-limit messages always have zero usage; do not count as a turn.
+              return;
+            }
+
             const usage = msg.usage;
             const model = typeof msg.model === "string" ? msg.model : "unknown";
             const toolUses: RawToolUse[] = [];
@@ -133,14 +171,14 @@ export function extractTurns(filePath: string): Promise<ExtractResult> {
         }
       });
 
-      rl.on("close", () => resolve({ turns, errors, firstUserMessage, isSidechain, entrypoint }));
-      rl.on("error", () => resolve({ turns, errors, firstUserMessage, isSidechain, entrypoint }));
+      rl.on("close", () => resolve({ turns, errors, rateLimitEvents, firstUserMessage, isSidechain, entrypoint }));
+      rl.on("error", () => resolve({ turns, errors, rateLimitEvents, firstUserMessage, isSidechain, entrypoint }));
       stream.on("error", () => {
         rl.close();
-        resolve({ turns, errors, firstUserMessage, isSidechain, entrypoint });
+        resolve({ turns, errors, rateLimitEvents, firstUserMessage, isSidechain, entrypoint });
       });
     } catch {
-      resolve({ turns, errors, firstUserMessage, isSidechain, entrypoint });
+      resolve({ turns, errors, rateLimitEvents, firstUserMessage, isSidechain, entrypoint });
     }
   });
 }

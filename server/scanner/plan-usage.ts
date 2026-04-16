@@ -14,7 +14,9 @@ import type {
   PeakHoursGrid,
   PredictedLimitHit,
   BuildupPoint,
+  HistoricalLimits,
 } from "@shared/types";
+import { buildHistoricalLimits } from "./historical-limits";
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BUNDLED_CATALOG_PATH = path.join(THIS_DIR, "..", "plan-catalog.json");
@@ -324,6 +326,12 @@ export async function buildPlanUsage(
   const weekly = turns.length > 0 ? aggregatePeriod(turns, weekStartMs, now.getTime()) : null;
   const weeklyBuildup = buildWeeklyBuildup(turns, now);
 
+  const historicalLimits: HistoricalLimits = await buildHistoricalLimits(sessions, {
+    claudeProjectsDir: opts.claudeProjectsDir,
+    windowHours: plan?.sessionWindow.durationHours ?? 5,
+    now,
+  });
+
   // Monthly = calendar month
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const monthly = turns.length > 0 ? aggregatePeriod(turns, monthStart, now.getTime()) : null;
@@ -344,6 +352,7 @@ export async function buildPlanUsage(
     weekly,
     weeklyBuildup,
     monthly,
+    historicalLimits,
     peakHours,
     throttleWindows: catalog.throttleWindows || [],
     predictedLimitHit: predicted,

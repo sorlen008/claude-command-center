@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Dialog,
   DialogContent,
@@ -208,7 +209,7 @@ function StepDiscovered() {
   );
 }
 
-function StepReady() {
+function StepReady({ onOpenHelp }: { onOpenHelp: () => void }) {
   const tips = [
     { icon: Keyboard, label: "Press Ctrl+K to search across everything" },
     { icon: GitBranch, label: "Check the Graph page for an ecosystem overview" },
@@ -240,7 +241,7 @@ function StepReady() {
       <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 w-full">
         <SlidersHorizontal className="h-4 w-4 text-blue-400 shrink-0" />
         <p className="text-xs text-muted-foreground">
-          Want to re-run this later? Go to <span className="font-semibold text-blue-400">Settings</span> and click <span className="font-semibold text-blue-400">Run Onboarding</span>. Or open the <a href="/help#first-5-minutes" className="font-semibold text-blue-400 hover:underline">Help Center</a> for the first-five-minutes walkthrough.
+          Want to re-run this later? Go to <span className="font-semibold text-blue-400">Settings</span> and click <span className="font-semibold text-blue-400">Run Onboarding</span>. Or open the <button type="button" onClick={onOpenHelp} className="font-semibold text-blue-400 hover:underline">Help Center</button> for the first-five-minutes walkthrough.
         </p>
       </div>
     </div>
@@ -250,6 +251,7 @@ function StepReady() {
 export function OnboardingWizard() {
   const { data: settings, isLoading } = useAppSettings();
   const updateSettings = useUpdateSettings();
+  const [, setLocation] = useLocation();
   const [step, setStep] = useState(0);
   const [appName, setAppName] = useState("");
   const [initialized, setInitialized] = useState(false);
@@ -274,6 +276,21 @@ export function OnboardingWizard() {
     );
   };
 
+  // Finish onboarding then navigate — prevents the modal-trap when the user
+  // wants to open the Help Center from the final step.
+  const handleFinishAndNavigate = (path: string) => {
+    const name = appName.trim() || "Command Center";
+    updateSettings.mutate(
+      { appName: name, onboarded: true },
+      {
+        onSuccess: () => {
+          setDone(true);
+          setLocation(path);
+        },
+      },
+    );
+  };
+
   const canGoNext = step < TOTAL_STEPS - 1;
   const canGoBack = step > 0;
   const isLastStep = step === TOTAL_STEPS - 1;
@@ -294,7 +311,7 @@ export function OnboardingWizard() {
           <div className="flex-1">
             {step === 0 && <StepWelcome appName={appName} onAppNameChange={setAppName} />}
             {step === 1 && <StepDiscovered />}
-            {step === 2 && <StepReady />}
+            {step === 2 && <StepReady onOpenHelp={() => handleFinishAndNavigate("/help#first-5-minutes")} />}
           </div>
 
           <div className="pt-4 space-y-4">

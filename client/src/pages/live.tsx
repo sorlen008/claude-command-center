@@ -107,7 +107,11 @@ function getStatusConfig(status?: string) {
   return STATUS_CONFIG[status || ""] || STATUS_CONFIG.stale;
 }
 
-/** Collapsible guide: Context & Session Tips */
+/** Collapsible guide: Context & Session Tips
+ *  SYNC: keep the "context bar" concept aligned with the Live category in
+ *  client/src/pages/help.tsx. The new-user-safety test grep-asserts that both
+ *  files mention the term — update both when editing.
+ */
 function SessionContextGuide({ show, onToggle }: { show: boolean; onToggle: () => void }) {
   return (
     <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5">

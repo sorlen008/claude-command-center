@@ -166,3 +166,15 @@ describe("Terminal delegation is cross-platform", () => {
     expect(content).toContain("x-terminal-emulator");
   });
 });
+
+describe("Help Center ↔ Live View content are kept in sync", () => {
+  it("help.tsx and live.tsx both mention 'context bar'", () => {
+    const help = fs.readFileSync(path.join(ROOT, "client/src/pages/help.tsx"), "utf-8");
+    const live = fs.readFileSync(path.join(ROOT, "client/src/pages/live.tsx"), "utf-8");
+    // When SessionContextGuide in live.tsx explains the context bar, the Live
+    // category in help.tsx must carry matching coverage. Drift is a v1-style
+    // "Deep mode" factual-rot bug waiting to happen.
+    expect(help.toLowerCase()).toContain("context bar");
+    expect(live.toLowerCase()).toContain("context bar");
+  });
+});
