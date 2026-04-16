@@ -13,6 +13,7 @@ import type {
   PeriodUsage,
   PeakHoursGrid,
   PredictedLimitHit,
+  BuildupPoint,
 } from "@shared/types";
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -164,6 +165,53 @@ function estimateActiveHours(turns: TurnWithCost[], familyPredicate: (model: str
 function isOpus(model: string): boolean { return /opus/i.test(model); }
 function isSonnet(model: string): boolean { return /sonnet/i.test(model); }
 
+/**
+ * Per-day usage for the last 7 calendar days, with cumulative running totals.
+ * Used by the Billing tab "buildup" chart so the user can see how close they
+ * are to each limit over time.
+ */
+export function buildWeeklyBuildup(turns: TurnWithCost[], now: Date = new Date()): BuildupPoint[] {
+  const points: BuildupPoint[] = [];
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+
+  // Last 7 calendar days including today.
+  for (let offset = 6; offset >= 0; offset--) {
+    const dayStart = new Date(startOfToday);
+    dayStart.setDate(dayStart.getDate() - offset);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const dayMs = dayStart.getTime();
+    const nextMs = dayEnd.getTime();
+    const inDay = turns.filter(t => t.ms >= dayMs && t.ms < nextMs);
+    const sonnetHours = estimateActiveHours(inDay, isSonnet);
+    const opusHours = estimateActiveHours(inDay, isOpus);
+    const costUsd = Math.round(inDay.reduce((s, t) => s + t.cost, 0) * 10000) / 10000;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dateKey = `${dayStart.getFullYear()}-${pad(dayStart.getMonth() + 1)}-${pad(dayStart.getDate())}`;
+    points.push({
+      date: dateKey,
+      sonnetHours,
+      opusHours,
+      costUsd,
+      cumSonnetHours: 0,
+      cumOpusHours: 0,
+      cumCostUsd: 0,
+    });
+  }
+
+  let cumSonnet = 0, cumOpus = 0, cumCost = 0;
+  for (const p of points) {
+    cumSonnet += p.sonnetHours;
+    cumOpus += p.opusHours;
+    cumCost += p.costUsd;
+    p.cumSonnetHours = Math.round(cumSonnet * 10) / 10;
+    p.cumOpusHours = Math.round(cumOpus * 10) / 10;
+    p.cumCostUsd = Math.round(cumCost * 10000) / 10000;
+  }
+  return points;
+}
+
 export function aggregatePeriod(turns: TurnWithCost[], startMs: number, endMs: number): PeriodUsage {
   const inRange = turns.filter(t => t.ms >= startMs && t.ms <= endMs);
   const tokensUsed = inRange.reduce((s, t) => s + t.activeTokens, 0);
@@ -274,6 +322,7 @@ export async function buildPlanUsage(
   // Weekly = rolling 7 days
   const weekStartMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
   const weekly = turns.length > 0 ? aggregatePeriod(turns, weekStartMs, now.getTime()) : null;
+  const weeklyBuildup = buildWeeklyBuildup(turns, now);
 
   // Monthly = calendar month
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -293,6 +342,7 @@ export async function buildPlanUsage(
     apiKeyPresent,
     currentSession: sessionWindow,
     weekly,
+    weeklyBuildup,
     monthly,
     peakHours,
     throttleWindows: catalog.throttleWindows || [],

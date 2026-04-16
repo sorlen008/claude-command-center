@@ -823,6 +823,16 @@ export interface PeriodUsage {
   opusHours: number;
 }
 
+export interface BuildupPoint {
+  date: string;                // YYYY-MM-DD, one per day
+  sonnetHours: number;         // hours accrued that day
+  opusHours: number;
+  costUsd: number;
+  cumSonnetHours: number;      // cumulative over the rolling 7-day window
+  cumOpusHours: number;
+  cumCostUsd: number;
+}
+
 export interface PredictedLimitHit {
   periodicity: "session" | "weekly";
   hitAtIso: string;
@@ -846,6 +856,7 @@ export interface PlanUsageResponse {
   apiKeyPresent: boolean;
   currentSession: SessionWindowUsage | null;
   weekly: PeriodUsage | null;
+  weeklyBuildup: BuildupPoint[];
   monthly: PeriodUsage | null;
   peakHours: PeakHoursGrid;
   throttleWindows: ThrottleWindow[];

@@ -7,6 +7,7 @@ import { useAppSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { SearchTrigger } from "@/components/global-search";
 import { SyncIndicator } from "@/components/sync-indicator";
 import { UpdateIndicator } from "@/components/update-indicator";
+import { PlanStatusIndicator } from "@/components/plan-status-indicator";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { MoodPlayerProvider } from "@/components/mood-player";
 import {
@@ -242,6 +243,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </ScrollArea>
         <div className="mx-3 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
         <UpdateIndicator collapsed={collapsed} />
+        <div className="mx-3 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
+        <PlanStatusIndicator collapsed={collapsed} />
         <div className="mx-3 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />
         <SyncIndicator collapsed={collapsed} />
         <div className="mx-3 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent" />

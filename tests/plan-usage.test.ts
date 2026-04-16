@@ -9,6 +9,7 @@ import {
   predictLimitHit,
   findPlan,
   loadPlanCatalog,
+  buildWeeklyBuildup,
 } from "../server/scanner/plan-usage";
 import type { PlanDefinition, PeriodUsage } from "@shared/types";
 
@@ -169,6 +170,46 @@ describe("plan-catalog file integrity", () => {
     expect(findPlan(catalog, "pro")!.weekly.opusHoursMin).toBeNull();
     expect(findPlan(catalog, "max5x")!.weekly.opusHoursMin).toBe(15);
     expect(findPlan(catalog, "max20x")!.weekly.opusHoursMin).toBe(24);
+  });
+});
+
+describe("buildWeeklyBuildup", () => {
+  const now = new Date("2026-04-16T14:00:00Z");
+
+  it("returns 7 points covering the last 7 calendar days including today", () => {
+    const points = buildWeeklyBuildup([], now);
+    expect(points.length).toBe(7);
+    // Today is the last one.
+    expect(points[points.length - 1].date).toBe("2026-04-16");
+    // 6 days ago is the first.
+    expect(points[0].date).toBe("2026-04-10");
+  });
+
+  it("all cumulative values are zero for empty input", () => {
+    const points = buildWeeklyBuildup([], now);
+    for (const p of points) {
+      expect(p.sonnetHours).toBe(0);
+      expect(p.cumSonnetHours).toBe(0);
+      expect(p.cumCostUsd).toBe(0);
+    }
+  });
+
+  it("cumulative running totals are monotonic", () => {
+    const turns = [
+      turn("2026-04-11T10:00:00Z", 100, "claude-sonnet-4-6", 0.5),
+      turn("2026-04-13T12:00:00Z", 200, "claude-sonnet-4-6", 0.8),
+      turn("2026-04-16T08:00:00Z", 300, "claude-opus-4-6", 1.2),
+    ];
+    const points = buildWeeklyBuildup(turns, now);
+    // Running sums are non-decreasing.
+    for (let i = 1; i < points.length; i++) {
+      expect(points[i].cumCostUsd).toBeGreaterThanOrEqual(points[i - 1].cumCostUsd);
+      expect(points[i].cumSonnetHours).toBeGreaterThanOrEqual(points[i - 1].cumSonnetHours);
+      expect(points[i].cumOpusHours).toBeGreaterThanOrEqual(points[i - 1].cumOpusHours);
+    }
+    // Final cumulative cost equals sum of all per-day costs.
+    const perDaySum = points.reduce((s, p) => s + p.costUsd, 0);
+    expect(points[6].cumCostUsd).toBeCloseTo(perDaySum, 4);
   });
 });
 
