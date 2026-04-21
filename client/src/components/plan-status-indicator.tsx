@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Gauge, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { PlanUsagePopoverContent } from "@/components/plan-usage-popover";
 
 interface HistoricalLimitsLite {
   medianTokens: number | null;
@@ -45,10 +48,11 @@ function fmtDelta(iso: string): string {
  */
 export function PlanStatusIndicator({ collapsed }: { collapsed: boolean }) {
   const [, setLocation] = useLocation();
+  const [open, setOpen] = useState(false);
   const { data, isLoading } = useQuery<PlanUsageLite>({
     queryKey: ["/api/analytics/plan-usage"],
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    staleTime: 15_000,
+    refetchInterval: 15_000,
   });
   const { data: settings } = useQuery<SettingsLite>({
     queryKey: ["/api/settings"],
@@ -57,10 +61,28 @@ export function PlanStatusIndicator({ collapsed }: { collapsed: boolean }) {
 
   const isApi = data?.billingModeDetected === "api";
 
+  // Navigate helper — closes the popover before routing so the user doesn't
+  // see the glance card float over a freshly-rendered page.
+  const navigate = (path: string) => {
+    setOpen(false);
+    setLocation(path);
+  };
+
+  // Shared popover wrapper. The trigger changes per render branch below, but the
+  // content always renders PlanUsagePopoverContent — which handles the
+  // no-plan / no-active-session / api / subscription modes internally.
+  const wrap = (trigger: React.ReactNode) => (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent side="right" align="end" sideOffset={8} className="w-[320px] p-4">
+        <PlanUsagePopoverContent onNavigate={navigate} />
+      </PopoverContent>
+    </Popover>
+  );
+
   if (!isLoading && (!data || (!data.selectedPlanId && !isApi))) {
-    return (
+    return wrap(
       <button
-        onClick={() => setLocation("/stats")}
         className={cn(
           "flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-sidebar-accent/30 transition-colors w-full",
           collapsed ? "justify-center" : ""
@@ -97,10 +119,9 @@ export function PlanStatusIndicator({ collapsed }: { collapsed: boolean }) {
     }
     const headline = `$${spent.toFixed(2)}`;
     const sub = budget && budget > 0 ? `of $${budget.toFixed(0)} budget` : "this month";
-    const tooltip = `Pay-as-you-go — $${spent.toFixed(2)} this calendar month${budget && budget > 0 ? ` of $${budget.toFixed(0)} budget (${Math.round(pct!)}%)` : ""}. Click for details.`;
-    return (
+    const tooltip = `Pay-as-you-go — $${spent.toFixed(2)} this calendar month${budget && budget > 0 ? ` of $${budget.toFixed(0)} budget (${Math.round(pct!)}%)` : ""}. Click for the usage glance.`;
+    return wrap(
       <button
-        onClick={() => setLocation("/stats")}
         className={cn(
           "flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-sidebar-accent/30 transition-colors w-full",
           collapsed ? "justify-center" : ""
@@ -165,14 +186,13 @@ export function PlanStatusIndicator({ collapsed }: { collapsed: boolean }) {
   }
 
   const tooltip = hasPersonalCeiling
-    ? `${Math.round((tokens / ceilingValue!) * 100)}% of your personal ceiling (${ceilingValue!.toLocaleString()} tokens, from ${data.historicalLimits.sampleSize} past hits). Click for details.`
+    ? `${Math.round((tokens / ceilingValue!) * 100)}% of your personal ceiling (${ceilingValue!.toLocaleString()} tokens, from ${data.historicalLimits.sampleSize} past hits). Click for the usage glance.`
     : hasEstimateCeiling
-      ? `Estimated ceiling (${ceilingValue!.toLocaleString()} tokens) — no past limit hits yet, so this is plan-based. Click for Billing.`
-      : "Click for plan details";
+      ? `Estimated ceiling (${ceilingValue!.toLocaleString()} tokens) — no past limit hits yet, so this is plan-based. Click for the usage glance.`
+      : "Click for the usage glance";
 
-  return (
+  return wrap(
     <button
-      onClick={() => setLocation("/stats")}
       className={cn(
         "flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-sidebar-accent/30 transition-colors w-full",
         collapsed ? "justify-center" : ""

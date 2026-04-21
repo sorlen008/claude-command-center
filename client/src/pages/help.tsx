@@ -32,6 +32,11 @@ import {
   Sparkles,
   ArrowRight,
   Check,
+  Terminal,
+  Zap,
+  Lock,
+  Mic,
+  Settings2,
 } from "lucide-react";
 
 // -----------------------------------------------------------------------------
@@ -892,6 +897,165 @@ const CHEAT_ENV_VARS: { name: string; purpose: string; default: string }[] = [
 ];
 
 // -----------------------------------------------------------------------------
+// Claude Code Guide — reference for every CLI command, shortcut, and feature.
+// Sourced from Anthropic docs, release notes, and community research.
+// -----------------------------------------------------------------------------
+
+type CliItem = {
+  name: string;
+  syntax: string;
+  description: React.ReactNode;
+  when: string;
+  tips?: React.ReactNode;
+  level: Level;
+};
+
+type CliCategory = {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  items: CliItem[];
+};
+
+const CLI_CATEGORIES: CliCategory[] = [
+  {
+    id: "cc-essential",
+    label: "Essential Commands",
+    icon: Rocket,
+    color: "#3b82f6",
+    items: [
+      { name: "/compact", syntax: "/compact [focus instructions]", description: <>Compresses your conversation mid-session to free context window space. Claude summarizes what happened so far and continues from the summary. You can add focus instructions like <C>/compact focus on the auth module</C> to guide what's kept.</>, when: "When your context is filling up but you're not done with the task. Ctrl+O shows your usage.", tips: <>Your previous uncompacted session is still accessible via <C>/resume</C>. Compaction is lossy — Claude may lose track of small details.</>, level: "beginner" },
+      { name: "/plan", syntax: "/plan [description]", description: <>Enters plan mode. Claude reads and explores your codebase, writes a structured implementation plan, then asks how to proceed. You can approve into auto mode, accept-edits mode, or review each change.</>, when: "Before starting non-trivial tasks. Helps you align on approach before Claude writes code.", tips: <>You can also switch to plan mode mid-session via <K>Shift</K>+<K>Tab</K>. The plan is persisted and survives compaction.</>, level: "beginner" },
+      { name: "/clear", syntax: "/clear", description: <>Starts a fresh conversation. The previous session is saved and accessible via <C>/resume</C>.</>, when: "When you want to switch topics completely or start clean.", level: "beginner" },
+      { name: "/model", syntax: "/model [name]", description: <>Switch models mid-session. Supports aliases: <C>sonnet</C>, <C>opus</C>, <C>haiku</C>, or full model names. Without an argument, shows a picker.</>, when: "When you want to switch between speed (Sonnet) and capability (Opus) mid-task.", level: "beginner" },
+      { name: "/help", syntax: "/help", description: <>Shows all available slash commands and basic usage. Context-sensitive — shows different output depending on your current state.</>, when: "When you forget a command or want to discover new ones.", level: "beginner" },
+      { name: "/status", syntax: "/status", description: <>Shows your Claude Code version, active model, account info, and connectivity. Works even while Claude is responding.</>, when: "Quick health check or to verify which model you're running.", level: "beginner" },
+      { name: "/cost", syntax: "/cost", description: <>Shows token usage stats for the current session. Subscription-specific details if you're on a paid plan.</>, when: "When you want to know how much context you've used.", level: "beginner" },
+      { name: "/context", syntax: "/context", description: <>Visualizes your context usage with optimization suggestions. Shows what's taking up space.</>, when: "When you suspect context bloat and want to know why before compacting.", level: "intermediate" },
+    ],
+  },
+  {
+    id: "cc-session",
+    label: "Session Management",
+    icon: MessageSquare,
+    color: "#8b5cf6",
+    items: [
+      { name: "/resume", syntax: "/resume [session-id or name]", description: <>Continue a previous conversation. Shows a session picker if no argument given. Sessions are named and searchable.</>, when: "When you want to return to work from a previous session — even across machine restarts.", tips: <>From the CLI: <C>claude --resume SESSION_ID</C> or <C>claude -c</C> (most recent).</>, level: "beginner" },
+      { name: "/branch", syntax: "/branch [name]", description: <>Branch the current conversation. The original session is preserved; you get a new fork from this point. Also available as <C>/fork</C>.</>, when: "When you want to try an alternative approach without losing the current one.", level: "intermediate" },
+      { name: "/rename", syntax: "/rename [name]", description: <>Rename the current session. If no name given, Claude auto-generates one from the conversation history.</>, when: "When the default session name isn't descriptive enough for later /resume.", level: "beginner" },
+      { name: "/export", syntax: "/export [filename]", description: <>Export the current session as a plaintext file. Opens a dialog if no filename given.</>, when: "When you want to share a conversation or keep an offline copy.", level: "intermediate" },
+      { name: "/rewind", syntax: "/rewind", description: <>Restore conversation and code state to a previous checkpoint. Also triggered by pressing <K>Esc</K>+<K>Esc</K>. Claude auto-checkpoints at key moments.</>, when: "When Claude made changes you want to undo, including file edits.", tips: <>This is more powerful than git — it restores conversation state AND code state together.</>, level: "intermediate" },
+      { name: "/recap", syntax: "/recap", description: <>Generate a summary of the current session. Also shows automatically when you return after 3+ minutes away.</>, when: "When you need a quick reminder of what happened so far.", level: "beginner" },
+      { name: "/diff", syntax: "/diff", description: <>Interactive viewer showing git diffs and per-turn diffs. See exactly what changed and when.</>, when: "When you want to review all changes Claude made, organized by turn.", level: "intermediate" },
+    ],
+  },
+  {
+    id: "cc-workflow",
+    label: "Advanced Workflows",
+    icon: Zap,
+    color: "#f59e0b",
+    items: [
+      { name: "/batch", syntax: "/batch <instruction>", description: <>Orchestrates 5–30 parallel agents, each in an isolated git worktree. Ideal for large-scale refactors across many files. Claude plans the work, spawns agents, and merges results.</>, when: "When you need to make similar changes across many files — like migrating an API across 20 endpoints.", tips: <>Requires git. Each agent works independently; merge conflicts are resolved at the end. Start with small batches to calibrate.</>, level: "advanced" },
+      { name: "/simplify", syntax: "/simplify [focus area]", description: <>Spawns 3 parallel review agents examining your recent code for reuse opportunities, code quality issues, and efficiency improvements. Returns a consolidated report.</>, when: "After finishing a feature — get a quick second opinion on code quality.", level: "intermediate" },
+      { name: "/loop", syntax: "/loop [interval] [prompt]", description: <>Runs a prompt repeatedly. Interval can be time-based (e.g., <C>5m</C>) or self-paced. Useful for polling, monitoring, or iterative tasks.</>, when: "When you need Claude to keep checking something — like waiting for a build to finish or monitoring test output.", tips: <>Self-paced mode lets Claude decide when to check next. Set a reasonable interval to avoid burning context.</>, level: "advanced" },
+      { name: "/schedule", syntax: "/schedule [description]", description: <>Create, update, or list routines — cron-based automation that runs Claude commands on a schedule.</>, when: "When you want Claude to do something regularly — like daily code reviews or morning status reports.", level: "advanced" },
+      { name: "/btw", syntax: "/btw <question>", description: <>Ask a side question without adding to the conversation history. Reuses the parent cache (low cost) but has no tool access.</>, when: "Quick factual question mid-task without polluting your main context.", level: "intermediate" },
+      { name: "/review", syntax: "/review [PR number]", description: <>Review the current branch's PR. Analyzes changes, checks for bugs, suggests improvements. <C>/ultrareview</C> runs a deeper cloud-based analysis.</>, when: "Before merging a PR — get a thorough automated code review.", level: "intermediate" },
+      { name: "/security-review", syntax: "/security-review", description: <>Scans the git diff for security vulnerabilities — injection, auth bypass, data exposure, etc.</>, when: "Before shipping code that handles user input, auth, or sensitive data.", level: "intermediate" },
+      { name: "/autofix-pr", syntax: "/autofix-pr [prompt]", description: <>Cloud-based session that watches your current PR branch. Automatically fixes CI failures and addresses review comments.</>, when: "When CI is failing on a PR and you want Claude to fix it autonomously.", level: "advanced" },
+    ],
+  },
+  {
+    id: "cc-config",
+    label: "Configuration",
+    icon: Settings2,
+    color: "#06b6d4",
+    items: [
+      { name: "/config", syntax: "/config", description: <>Opens an interactive settings panel. Configure model, theme, output style, editor mode (vim), prompt suggestions, and more. Also available as <C>/settings</C>.</>, when: "When you want to change Claude Code behavior — model, theme, vim mode, etc.", level: "beginner" },
+      { name: "/permissions", syntax: "/permissions", description: <>Manage tool permission rules — allow, ask, or deny specific tools. Review what auto mode denied. See the current mode and switch.</>, when: "When you want to fine-tune which actions Claude can take without asking.", level: "intermediate" },
+      { name: "/memory", syntax: "/memory", description: <>Edit your CLAUDE.md file and toggle auto-memory. CLAUDE.md is loaded into every session and serves as persistent project context.</>, when: "When you want to add persistent instructions, project conventions, or context for all future sessions.", tips: <>CLAUDE.md files cascade: <C>~/.claude/CLAUDE.md</C> (global) → <C>PROJECT/CLAUDE.md</C> (project) → <C>PROJECT/.claude/CLAUDE.md</C> (project-level).</>, level: "beginner" },
+      { name: "/hooks", syntax: "/hooks", description: <>View hook configurations. Hooks are deterministic scripts triggered on events like <C>PreToolUse</C>, <C>PostToolUse</C>, <C>Stop</C>, <C>SessionStart</C>, <C>SessionEnd</C>.</>, when: "When you want to add custom automation — like running linters after every edit or logging tool calls.", level: "advanced" },
+      { name: "/mcp", syntax: "/mcp", description: <>Manage MCP (Model Context Protocol) servers. Connect external tools and data sources to Claude — databases, APIs, browser automation, calendars, etc.</>, when: "When you want to give Claude access to external systems beyond the filesystem.", tips: <>Configured via <C>.mcp.json</C> at project root or <C>~/.claude/.mcp.json</C> globally. Supports stdio and HTTP transports.</>, level: "intermediate" },
+      { name: "/plugin", syntax: "/plugin [install|list|uninstall]", description: <>Manage plugins. Plugins bundle skills, hooks, subagents, and MCP servers into a single installable package.</>, when: "When you find a community plugin that adds useful capabilities.", level: "intermediate" },
+      { name: "/theme", syntax: "/theme", description: <>Change the color theme. Options include auto dark/light, daltonized (color-blind friendly), and various ANSI modes.</>, when: "When the default theme doesn't suit your terminal or preferences.", level: "beginner" },
+      { name: "/keybindings", syntax: "/keybindings", description: <>Open or create your keybindings configuration file for custom keyboard shortcuts.</>, when: "When the default keyboard shortcuts conflict with your terminal or you want custom binds.", level: "advanced" },
+    ],
+  },
+  {
+    id: "cc-cli",
+    label: "CLI Flags",
+    icon: Terminal,
+    color: "#10b981",
+    items: [
+      { name: "--print / -p", syntax: "claude -p \"query\"", description: <>Non-interactive mode. Send a query, get a response, exit. Essential for scripting and automation.</>, when: "When embedding Claude in scripts, cron jobs, or pipelines.", tips: <>Combine with <C>--output-format json</C> for machine-readable output. Add <C>--no-session-persistence</C> to avoid polluting the session list.</>, level: "intermediate" },
+      { name: "--resume / -r / -c", syntax: "claude --resume SESSION_ID\nclaude -c", description: <><C>-r</C> resumes a specific session by ID or name. <C>-c</C> continues the most recent session.</>, when: "When resuming work from the terminal command line.", level: "beginner" },
+      { name: "--model", syntax: "claude --model opus", description: <>Set the model at startup. Supports aliases (<C>sonnet</C>, <C>opus</C>, <C>haiku</C>) or full model IDs.</>, when: "When you want a specific model from the start.", level: "beginner" },
+      { name: "--permission-mode", syntax: "claude --permission-mode auto", description: <>Start in a specific permission mode: <C>default</C>, <C>acceptEdits</C>, <C>plan</C>, <C>auto</C>, <C>dontAsk</C>, <C>bypassPermissions</C>.</>, when: "When you know upfront you want a specific trust level.", level: "intermediate" },
+      { name: "--max-turns", syntax: "claude -p \"task\" --max-turns 10", description: <>Limit the number of agentic turns in print mode. Prevents runaway loops.</>, when: "When running automated tasks where you need a safety cap.", level: "intermediate" },
+      { name: "--max-budget-usd", syntax: "claude -p \"task\" --max-budget-usd 5.00", description: <>Stop before exceeding a dollar spend threshold (print mode only).</>, when: "When you need hard cost controls on automated runs.", level: "intermediate" },
+      { name: "--mcp-config", syntax: "claude --mcp-config path/to/config.json", description: <>Load MCP servers from a specific file instead of (or in addition to) the defaults.</>, when: "When running Claude in different environments that need different MCP setups.", level: "advanced" },
+      { name: "--system-prompt", syntax: "claude -p \"task\" --system-prompt \"You are a reviewer\"", description: <>Replace or append to the system prompt. Use <C>--append-system-prompt</C> to add without replacing.</>, when: "When building specialized agents or tools on top of Claude Code.", level: "advanced" },
+      { name: "--bare", syntax: "claude --bare -p \"task\"", description: <>Minimal startup — skips entity discovery and project scanning. Much faster for simple queries.</>, when: "When startup speed matters and you don't need project context.", level: "intermediate" },
+      { name: "--worktree / -w", syntax: "claude -w feature-branch", description: <>Run in an isolated git worktree. Claude works on a separate copy of the repo — no risk to your main branch.</>, when: "When you want Claude to experiment freely without touching your working directory.", level: "advanced" },
+    ],
+  },
+  {
+    id: "cc-keyboard",
+    label: "Keyboard Shortcuts",
+    icon: Keyboard,
+    color: "#ec4899",
+    items: [
+      { name: "Shift+Tab", syntax: "Shift+Tab", description: <>Cycle through permission modes: default → acceptEdits → plan → [auto/bypassPermissions if enabled].</>, when: "When you want to quickly change how much autonomy Claude has mid-session.", tips: <>Also available as <K>Alt</K>+<K>M</K>. The cycling order depends on which modes are enabled in your settings.</>, level: "beginner" },
+      { name: "Ctrl+O", syntax: "Ctrl+O", description: <>Toggle the transcript viewer. Shows the full conversation with expanded tool calls and MCP responses. Press <K>Ctrl</K>+<K>E</K> inside to toggle all content.</>, when: "When you want to see what Claude actually did — every tool call, every file read, every bash command.", level: "beginner" },
+      { name: "Alt+T / Option+T", syntax: "Alt+T (Win) / Option+T (Mac)", description: <>Toggle extended thinking. Claude shows its reasoning process before responding. Slower but better for complex problems.</>, when: "When facing a tricky bug or architectural decision — extended thinking helps Claude reason more carefully.", level: "intermediate" },
+      { name: "Alt+O / Option+O", syntax: "Alt+O (Win) / Option+O (Mac)", description: <>Toggle fast mode. Uses the same model with faster output. No quality difference.</>, when: "When you want quicker responses for simpler tasks.", level: "beginner" },
+      { name: "Alt+P / Option+P", syntax: "Alt+P (Win) / Option+P (Mac)", description: <>Switch model. Opens a model picker to change mid-session.</>, when: "When you want to switch between Opus and Sonnet without typing /model.", level: "beginner" },
+      { name: "Ctrl+G", syntax: "Ctrl+G or Ctrl+X Ctrl+E", description: <>Open your current prompt in your default text editor. The previous response is shown as comments for reference. Great for long prompts.</>, when: "When you need to write a multi-paragraph prompt that's hard to compose in the terminal.", level: "intermediate" },
+      { name: "Ctrl+R", syntax: "Ctrl+R", description: <>Reverse-search your command history. Type to find previous prompts interactively.</>, when: "When you want to re-run or modify a previous prompt.", level: "intermediate" },
+      { name: "Esc + Esc", syntax: "Press Esc twice", description: <>Trigger rewind/checkpoint. Restore conversation and code to a previous state.</>, when: "When you want to undo Claude's last action, including file changes.", level: "intermediate" },
+      { name: "! (prefix)", syntax: "! ls -la", description: <>Bash mode — run a shell command directly. Output becomes part of the conversation. Supports history-based autocomplete.</>, when: "When you want to run a quick command and show Claude the output.", level: "beginner" },
+      { name: "@ (prefix)", syntax: "@src/main.ts", description: <>File mention — trigger autocomplete for file paths. Referenced files are loaded into context.</>, when: "When you want to point Claude at a specific file.", level: "beginner" },
+      { name: "Ctrl+V / Cmd+V", syntax: "Ctrl+V or Cmd+V", description: <>Paste an image from your clipboard. Inserts as <C>[Image #N]</C> chip. Claude can analyze screenshots, diagrams, etc.</>, when: "When you want to show Claude a screenshot, error dialog, or design mockup.", level: "beginner" },
+      { name: "Ctrl+T", syntax: "Ctrl+T", description: <>Toggle the task list. Track multi-step work that persists across compactions.</>, when: "When working on a complex task and you want to see progress.", level: "beginner" },
+    ],
+  },
+  {
+    id: "cc-modes",
+    label: "Permission Modes",
+    icon: Lock,
+    color: "#6366f1",
+    items: [
+      { name: "Default", syntax: "Shift+Tab → Default", description: <>Claude can only read files and ask permission for everything else. The safest mode — you approve every write, every bash command.</>, when: "When working on sensitive code or you're learning what Claude does.", tips: <>This is the default for new installations. Switch up as you build trust.</>, level: "beginner" },
+      { name: "Accept Edits", syntax: "Shift+Tab → Accept Edits", description: <>Auto-approves file reads AND file edits. Safe bash commands (<C>mkdir</C>, <C>touch</C>, <C>mv</C>, <C>cp</C>) are also auto-approved. Still asks for risky bash.</>, when: "The sweet spot for most development work. Claude edits freely, you review via git diff afterward.", level: "beginner" },
+      { name: "Plan Mode", syntax: "Shift+Tab → Plan", description: <>Read-only — Claude can explore but only proposes changes as a plan document. Nothing is actually edited until you approve. Then you choose which execution mode to use.</>, when: "When you want to see the full plan before any code is touched. Great for unfamiliar codebases.", level: "beginner" },
+      { name: "Auto Mode", syntax: "Shift+Tab → Auto", description: <>Auto-approves everything with a background safety classifier that checks each action. Requires Max, Team, or Enterprise plan with Sonnet/Opus 4.6+. Falls back after consecutive denials.</>, when: "When you're on a long autonomous task and trust the guardrails. Great with /batch and /loop.", tips: <>Research preview — the classifier blocks escalation, hostile content, and unrecognized infrastructure changes. Not a substitute for code review.</>, level: "advanced" },
+      { name: "Bypass Permissions", syntax: "--dangerously-skip-permissions", description: <>Auto-approves everything with no classifier. Protected paths (<C>.git</C>, <C>.claude</C>) are still guarded. <b>Only use in isolated containers.</b></>, when: "CI/CD pipelines, Docker containers, or sandboxed environments where there's no host to protect.", tips: <>The name is intentionally scary. Never use on your host machine. Use <C>--allow-dangerously-skip-permissions</C> to merely add it to the Shift+Tab cycle without starting in it.</>, level: "advanced" },
+    ],
+  },
+  {
+    id: "cc-features",
+    label: "Features & Concepts",
+    icon: Sparkles,
+    color: "#f97316",
+    items: [
+      { name: "Extended Thinking", syntax: "Alt+T to toggle", description: <>When enabled, Claude shows its chain-of-thought reasoning before responding. Takes longer but produces better results on complex problems — architecture decisions, tricky bugs, multi-step logic.</>, when: "For anything non-trivial. Especially debugging, planning, and code review.", tips: <>Costs more tokens. Toggle off for simple tasks. The thinking block is visible in Ctrl+O transcript view.</>, level: "intermediate" },
+      { name: "Fast Mode", syntax: "Alt+O to toggle, or /fast", description: <>Uses the same model with faster response delivery. No quality downgrade — just optimized output streaming.</>, when: "When you're iterating quickly and want faster feedback.", level: "beginner" },
+      { name: "CLAUDE.md Memory", syntax: "Edit via /memory", description: <>A markdown file loaded into every session. Acts as persistent project context — coding conventions, architecture notes, instructions. Cascades: <C>~/.claude/CLAUDE.md</C> (global) → <C>PROJECT/CLAUDE.md</C> → <C>.claude/CLAUDE.md</C>.</>, when: "To give Claude persistent knowledge about your project that it should always have.", tips: <>Keep it focused. Everything in CLAUDE.md counts against your context window every turn. Trim what's not essential.</>, level: "beginner" },
+      { name: "MCP Servers", syntax: "/mcp or .mcp.json", description: <>Model Context Protocol — connect Claude to external tools and data sources. Databases, calendars, email, browser automation, design tools, and more. Configured via JSON, supports stdio and HTTP transports.</>, when: "When you need Claude to interact with systems beyond the filesystem — APIs, databases, SaaS tools.", tips: <>Community MCP servers exist for most popular tools. Check <C>context7</C> for library docs, <C>playwright</C> for browser control.</>, level: "intermediate" },
+      { name: "Hooks", syntax: "/hooks or settings.json", description: <>Deterministic scripts triggered by events: <C>PreToolUse</C> (before), <C>PostToolUse</C> (after), <C>Stop</C>, <C>SessionStart</C>, <C>SessionEnd</C>. Run linters after edits, log tool calls, block dangerous commands, etc.</>, when: "When you want automated guardrails or post-processing on Claude's actions.", level: "advanced" },
+      { name: "Subagents", syntax: "--agents or .claude/agents/", description: <>Spawn isolated context workers that run a focused task and return a summary. Each agent has its own context window. Define via markdown frontmatter, CLI JSON, or the <C>.claude/agents/</C> directory.</>, when: "When a task benefits from parallel or isolated exploration — like researching while you code.", level: "advanced" },
+      { name: "Context Compaction", syntax: "/compact [focus]", description: <>Claude summarizes the conversation to reclaim context space. Focus instructions guide what's preserved. Previous uncompacted state remains accessible via <C>/resume</C>.</>, when: "When the context bar is getting full (check with Ctrl+O or /context) and you need more room.", tips: <>Compaction is lossy. Very specific details may be lost. Mention what's important in the focus argument.</>, level: "beginner" },
+      { name: "Git Worktrees", syntax: "claude -w branch-name", description: <>Claude works in an isolated copy of your repo. All changes happen in a separate git worktree — your main branch is untouched. Results can be merged back when ready.</>, when: "When you want Claude to experiment freely on a feature branch without risking your working directory.", level: "advanced" },
+      { name: "Voice Dictation", syntax: "/voice to enable", description: <>Push-to-talk voice input. Hold <K>Space</K> to record, release to send. Claude transcribes and processes your speech.</>, when: "When typing is inconvenient or you think better by talking.", level: "intermediate" },
+      { name: "Vim Mode", syntax: "/config → Editor mode", description: <>Full vim keybindings in the prompt input. NORMAL mode, INSERT mode, text objects, motions — the full experience.</>, when: "If you're a vim user and want muscle-memory navigation in the prompt.", level: "intermediate" },
+      { name: "Remote Control", syntax: "/remote-control or --rc", description: <>Connect your terminal session to claude.ai for web-based interaction. Control your local Claude Code from a browser on any device.</>, when: "When you want to interact with your local Claude from a phone, tablet, or different machine.", level: "advanced" },
+      { name: "Prompt Suggestions", syntax: "Tab or Right arrow to accept", description: <>Grayed-out follow-up suggestions appear based on conversation history. Press <K>Tab</K> to accept, or just type to ignore. Auto-skips after the first turn.</>, when: "When you're not sure what to ask next — the suggestions often surface useful follow-ups.", level: "beginner" },
+    ],
+  },
+];
+
+// -----------------------------------------------------------------------------
 // First 5 Minutes — linear walkthrough
 // -----------------------------------------------------------------------------
 
@@ -954,7 +1118,7 @@ function highlight(text: string, q: string): React.ReactNode {
 // URL hash parsing
 // -----------------------------------------------------------------------------
 
-type TabId = "first-5-minutes" | "browse" | "glossary" | "cheat-sheet";
+type TabId = "first-5-minutes" | "browse" | "glossary" | "cheat-sheet" | "claude-code";
 
 export function parseHash(hash: string): {
   tab: TabId;
@@ -971,6 +1135,7 @@ export function parseHash(hash: string): {
   if (raw === "first-5-minutes") return { tab: "first-5-minutes" };
   if (raw === "glossary") return { tab: "glossary" };
   if (raw === "cheat-sheet") return { tab: "cheat-sheet" };
+  if (raw === "claude-code" || raw.startsWith("cc-")) return { tab: "claude-code" };
   if (raw.startsWith("q=")) {
     try {
       return { tab: "browse", query: decodeURIComponent(raw.slice(2)) };
@@ -1246,12 +1411,15 @@ export default function HelpCenter() {
 
       {/* Tabs */}
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-        <TabsList className="grid grid-cols-4 w-full max-w-[560px]">
+        <TabsList className="grid grid-cols-5 w-full max-w-[700px]">
           <TabsTrigger value="first-5-minutes" className="text-xs">
             <Rocket className="h-3.5 w-3.5 mr-1.5" /> First 5 Min
           </TabsTrigger>
           <TabsTrigger value="browse" className="text-xs">
             <BookOpen className="h-3.5 w-3.5 mr-1.5" /> Browse
+          </TabsTrigger>
+          <TabsTrigger value="claude-code" className="text-xs">
+            <Terminal className="h-3.5 w-3.5 mr-1.5" /> Claude Code
           </TabsTrigger>
           <TabsTrigger value="glossary" className="text-xs">
             <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Glossary
@@ -1404,6 +1572,115 @@ export default function HelpCenter() {
           )}
         </TabsContent>
 
+        {/* -------- Claude Code Guide -------- */}
+        <TabsContent value="claude-code" className="space-y-6 pt-4">
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+            <div className="flex items-center gap-2 mb-1">
+              <Terminal className="h-4 w-4 text-emerald-400" />
+              <h2 className="text-sm font-semibold">Claude Code CLI Reference</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Every command, shortcut, mode, and feature in Claude Code — explained with syntax, when to use it, and tips.
+              {q && <> Showing matches for "{query}".</>}
+            </p>
+          </div>
+
+          {CLI_CATEGORIES.map((cat) => {
+            const Icon = cat.icon;
+            const filtered = cat.items.filter((item) => {
+              if (!isLevelVisible(item.level, levelFilter)) return false;
+              if (!q) return true;
+              const rank = (() => {
+                const name = item.name.toLowerCase();
+                const ql = q;
+                if (name === ql) return 0;
+                if (name.includes(ql)) return 1;
+                if (item.syntax.toLowerCase().includes(ql)) return 2;
+                if (item.when.toLowerCase().includes(ql)) return 3;
+                if (extractText(item.description).toLowerCase().includes(ql)) return 4;
+                if (item.tips && extractText(item.tips).toLowerCase().includes(ql)) return 5;
+                return 99;
+              })();
+              return rank < 99;
+            });
+            if (filtered.length === 0) return null;
+            return (
+              <section key={cat.id} className="rounded-xl border bg-card overflow-hidden">
+                <header className="flex items-center gap-3 px-5 py-4 border-b border-border/50">
+                  <div
+                    className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
+                    style={{ backgroundColor: `${cat.color}15` }}
+                  >
+                    <Icon className="h-4 w-4" style={{ color: cat.color }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-semibold">{cat.label}</h2>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {filtered.length} item{filtered.length !== 1 ? "s" : ""}
+                  </Badge>
+                </header>
+                <div className="divide-y divide-border/40">
+                  {filtered.map((item) => {
+                    const key = `cc-${cat.id}-${item.name}`;
+                    const isOpen = expanded.has(key) || !!q;
+                    const lvl = LEVEL_STYLE[item.level];
+                    return (
+                      <article key={key} data-help-topic={key}>
+                        <button
+                          type="button"
+                          onClick={() => toggleTopic(key)}
+                          className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-muted/30 transition-colors"
+                          aria-expanded={isOpen}
+                        >
+                          {isOpen ? (
+                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          <span
+                            className={`w-4 h-4 rounded-full inline-flex items-center justify-center text-[9px] font-bold text-background shrink-0 ${lvl.dot}`}
+                            title={`${item.level[0].toUpperCase()}${item.level.slice(1)}`}
+                          >
+                            {lvl.label}
+                          </span>
+                          <code className="text-[12px] font-mono font-semibold text-emerald-400 bg-emerald-500/10 rounded px-1.5 py-0.5 shrink-0">
+                            {highlight(item.name, query)}
+                          </code>
+                          <span className="text-xs text-muted-foreground/70 flex-1 truncate">
+                            {item.when}
+                          </span>
+                        </button>
+                        {isOpen && (
+                          <div className="px-5 pb-4 pl-[68px] space-y-2">
+                            <div className="text-sm text-foreground/80 leading-relaxed">{item.description}</div>
+                            <div className="text-xs">
+                              <span className="text-muted-foreground/60 uppercase tracking-wider text-[10px]">Syntax</span>
+                              <pre className="mt-1 font-mono text-[11px] text-blue-300 bg-blue-500/10 rounded-md px-3 py-2 whitespace-pre-wrap">{item.syntax}</pre>
+                            </div>
+                            {item.tips && (
+                              <div className="text-xs text-muted-foreground/70 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                                <span className="text-amber-400 font-medium text-[10px] uppercase tracking-wider">Tip</span>
+                                <div className="mt-0.5">{item.tips}</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          {CLI_CATEGORIES.every((cat) => cat.items.filter((item) => isLevelVisible(item.level, levelFilter) && (q ? extractText(item.description).toLowerCase().includes(q) || item.name.toLowerCase().includes(q) : true)).length === 0) && (
+            <div className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground">
+              No items match your current filters. Try clearing the search or switching to "All".
+            </div>
+          )}
+        </TabsContent>
+
         {/* -------- Glossary -------- */}
         <TabsContent value="glossary" className="space-y-4 pt-4">
           <div className="rounded-xl border bg-card p-5">
@@ -1524,7 +1801,7 @@ export default function HelpCenter() {
       <div className="rounded-xl border border-border/50 bg-muted/20 p-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <Check className="h-4 w-4 text-green-400" />
-          <span>{CATEGORIES.reduce((s, c) => s + c.topics.length, 0)} topics · {GLOSSARY.length} glossary terms · verified against source</span>
+          <span>{CATEGORIES.reduce((s, c) => s + c.topics.length, 0)} topics · {CLI_CATEGORIES.reduce((s, c) => s + c.items.length, 0)} CLI items · {GLOSSARY.length} glossary terms · verified against source</span>
         </div>
         <div className="flex items-center gap-3">
           <a

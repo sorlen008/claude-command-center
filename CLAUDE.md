@@ -6,7 +6,7 @@
 npm install
 npm run dev        # starts on http://localhost:5100
 npm run check      # TypeScript type-check
-npm test           # run all tests (1800+ tests)
+npm test           # run all tests (2000+ tests)
 ```
 
 ## Architecture
@@ -58,16 +58,52 @@ chore: description — vX.Y.Z
 server/
   routes/          # Express API routes
   scanner/         # JSONL parsers, analytics, AI features
+    plan-usage.ts        # Plan-awareness + personal-ceiling orchestration
+    historical-limits.ts # Parses rate_limit events from JSONL; personal percentiles
+    turn-extractor.ts    # Shared JSONL → turn/error/rateLimitEvent parser
   db.ts            # JSON database with atomic writes
   storage.ts       # Storage abstraction layer
 shared/
   types.ts         # Shared TypeScript interfaces
 client/
   src/pages/       # React page components
+    stats.tsx      # Analytics/Billing tab — personal-ceiling UI, percentile bar, API mode
+    help.tsx       # Help Center — 5 tabs (First 5 Min / Browse / Claude Code / Glossary / Cheat Sheet)
   src/hooks/       # React Query hooks
-  src/components/  # Reusable UI components
+  src/components/
+    plan-status-indicator.tsx # Sidebar pill; dual-mode (subscription vs API)
 tests/             # Vitest tests
 ```
+
+## Billing / Plan-Awareness Architecture
+
+The Analytics/Billing tab derives a *personal* session-window ceiling from the user's own past rate-limit events — not Anthropic's wide published ranges.
+
+1. `turn-extractor.ts` scans JSONL files and separates normal turns from synthetic `rate_limit` assistant messages (`type:"assistant"`, `error:"rate_limit"`, `isApiErrorMessage:true`).
+2. `historical-limits.ts::buildHistoricalLimits()` walks every session + subagent file, reconstructs the 5-hour window preceding each hit, and reports median / P25 / P50 / P90 tokens and hours.
+3. `plan-usage.ts::buildPlanUsage()` combines that with plan catalog data and returns a `PlanUsageResponse` containing:
+   - `historicalLimits` — percentiles and hit history
+   - `estimatedCeiling` — plan-based fallback when `sampleSize === 0`
+   - `planDetectionHint` — non-blocking upgrade suggestion when observed median mismatches selected plan (≥5 hits only, never downgrades)
+   - `noSessionsYet` — short-circuits the UI for brand-new installs
+4. `stats.tsx` renders: zero-session empty state → onboarding card (no plan) → API cost card (pay-as-you-go) OR session-countdown card (subscription) → plan hint → plan selector → usage bars.
+5. `plan-status-indicator.tsx` (sidebar pill) mirrors the same three-tier logic: personal percentage, fallback `est.` percentage, or plain reset countdown. API mode shows monthly $ spent instead.
+
+When adding fields to `PlanUsageResponse`: always restart the server after the change — Vite HMR will load new client code against stale server responses and crash with `undefined.fieldName`.
+
+## Help Center Structure
+
+`client/src/pages/help.tsx` is a single-file Help Center with five tabs:
+
+1. **First 5 Minutes** — linear walkthrough with CTA buttons
+2. **Browse** — 15 categories × ~107 topics with difficulty filter (beginner / all / advanced)
+3. **Claude Code** — 8 categories × ~63 CLI commands, shortcuts, modes, features (reference for `/compact`, `/plan`, `--model`, etc.)
+4. **Glossary** — 50 terms
+5. **Cheat Sheet** — shortcuts, URL params, env vars
+
+Content lives in three typed constants: `CATEGORIES` (Browse), `CLI_CATEGORIES` (Claude Code), `GLOSSARY`. Keyboard shortcuts are imported from `keyboard-shortcuts.tsx::SHORTCUT_SECTIONS` so the Cheat Sheet and the `?` overlay never drift. Topic DOM keys are slug-based (not array indices) so deep-links survive the difficulty filter. URL hash routing: `/help#<tab>`, `/help#<category>:<topic>`, `/help#q=<query>`.
+
+When adding a new keyboard shortcut: add it to `SHORTCUT_SECTIONS` in `keyboard-shortcuts.tsx` — it appears in both the overlay and the Cheat Sheet automatically.
 
 ## Adding AI Features (claude -p)
 
@@ -101,7 +137,7 @@ When adding integrations with external services:
 
 ## Tests
 
-- **1800+ unit tests** covering parsers, routes, storage, validation, client pages
+- **2000+ unit tests** covering parsers, routes, storage, validation, client pages
 - **`new-user-safety.test.ts`** — automated guardrail that scans all source files for:
   - Hardcoded user paths (both decoded `C:/Users/...` and encoded `C--Users-...`)
   - Phone numbers / PII
