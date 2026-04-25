@@ -24,6 +24,7 @@ import burnAnalyticsRouter from "./burn-analytics";
 import dashboardAnalyticsRouter from "./dashboard-analytics";
 import planUsageRouter from "./plan-usage";
 import apisRouter from "./apis";
+import scriptsRouter from "./scripts";
 import { spawn } from "child_process";
 import { platform } from "os";
 import path from "path";
@@ -86,6 +87,7 @@ export async function registerRoutes(server: Server, app: Express): Promise<void
   app.use(dashboardAnalyticsRouter);
   app.use(planUsageRouter);
   app.use(apisRouter);
+  app.use(scriptsRouter);
 
   // Actions — open-folder and open-file share identical logic
   const handleOpen = (req: import("express").Request, res: import("express").Response) => {

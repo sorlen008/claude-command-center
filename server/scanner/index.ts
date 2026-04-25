@@ -5,6 +5,7 @@ import { scanPlugins } from "./plugin-scanner";
 import { scanProjects, scanEnvServices, scanGitRemotes } from "./project-scanner";
 import { scanMarkdown } from "./markdown-scanner";
 import { scanConfigs } from "./config-scanner";
+import { scanScripts } from "./script-scanner";
 import { scanAllSessions } from "./session-scanner";
 import { scanAgentDefinitions, scanAgentExecutions } from "./agent-scanner";
 import { scanDockerCompose } from "./importers/docker-compose";
@@ -64,12 +65,17 @@ export async function runFullScan(): Promise<void> {
     const configs = scanConfigs();
     const { perProject } = scanAllSessions();
 
+    // Walk each project's directory tree for source-code scripts (Python today,
+    // forward-compat for sh/ts/js/rb). Must run after scanProjects so we have
+    // the project list to assign ownership.
+    const { scripts, countsByProject, cappedProjects } = scanScripts(projects);
+
     // Agent scanners
     scanAgentDefinitions();
     scanAgentExecutions();
 
     // Build new entity map atomically (no delete-then-reinsert gap)
-    const allEntities: Entity[] = [...mcps, ...skills, ...plugins, ...projects, ...markdowns, ...configs];
+    const allEntities: Entity[] = [...mcps, ...skills, ...plugins, ...projects, ...markdowns, ...configs, ...scripts];
     const newEntities: Record<string, Entity> = {};
     for (const entity of allEntities) {
       newEntities[entity.id] = entity;
@@ -91,6 +97,19 @@ export async function runFullScan(): Promise<void> {
       }
     }
 
+    // Stamp script counts on each ProjectEntity so the list-card chip can render
+    // without an extra round-trip.
+    for (const [projectId, count] of Array.from(countsByProject.entries())) {
+      const project = newEntities[projectId];
+      if (project) {
+        project.data = {
+          ...project.data,
+          scriptCount: count,
+          scriptCapped: cappedProjects.has(projectId),
+        };
+      }
+    }
+
     // Atomic swap: replace entities and relationships in one operation
     const db = getDB();
     db.entities = newEntities;
@@ -99,7 +118,7 @@ export async function runFullScan(): Promise<void> {
     save();
 
     // Build relationships (adds to the now-empty array)
-    buildRelationships(projects, mcps, skills, markdowns, plugins);
+    buildRelationships(projects, mcps, skills, markdowns, plugins, scripts);
 
     // Enhanced auto-discovery: Docker Compose, DB URLs from MCPs, .env services, git remotes
     const allCustomNodes: CustomNode[] = [];

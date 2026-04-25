@@ -7,6 +7,7 @@ import {
   Wand2,
   FileText,
   Settings,
+  Code2,
 } from "lucide-react";
 
 const entityConfig: Record<EntityType, { color: string; bg: string; icon: React.ElementType; label: string }> = {
@@ -16,6 +17,7 @@ const entityConfig: Record<EntityType, { color: string; bg: string; icon: React.
   skill: { color: "text-orange-400", bg: "bg-orange-500/10 border-orange-500/20", icon: Wand2, label: "Skill" },
   markdown: { color: "text-slate-400", bg: "bg-slate-500/10 border-slate-500/20", icon: FileText, label: "Markdown" },
   config: { color: "text-teal-400", bg: "bg-teal-500/10 border-teal-500/20", icon: Settings, label: "Config" },
+  script: { color: "text-yellow-400", bg: "bg-yellow-500/10 border-yellow-500/20", icon: Code2, label: "Script" },
 };
 
 export function EntityBadge({ type }: { type: EntityType }) {

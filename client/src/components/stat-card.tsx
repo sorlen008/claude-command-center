@@ -12,6 +12,7 @@ const entityHex: Record<EntityType, string> = {
   skill: "#f97316",
   markdown: "#64748b",
   config: "#14b8a6",
+  script: "#eab308",
 };
 
 interface StatCardProps {

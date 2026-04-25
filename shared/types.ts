@@ -1,4 +1,4 @@
-export type EntityType = "project" | "mcp" | "plugin" | "skill" | "markdown" | "config";
+export type EntityType = "project" | "mcp" | "plugin" | "skill" | "markdown" | "config" | "script";
 export type GraphNodeType = EntityType | "session" | "agent" | "custom";
 
 export type CustomNodeSubType = "service" | "database" | "api" | "cicd" | "deploy" | "queue" | "cache" | "other";
@@ -130,6 +130,10 @@ export interface ProjectEntity extends Entity {
     longDescription?: string;
     techStack?: string[];
     keyFeatures?: string[];
+    /** Number of project-owned scripts (currently `.py`). Surface in list-card chip. */
+    scriptCount?: number;
+    /** True when the script scanner stopped at the per-project cap and there may be more. */
+    scriptCapped?: boolean;
   };
 }
 
@@ -224,6 +228,28 @@ export interface ConfigEntity extends Entity {
 }
 
 /**
+ * A source-code script (currently Python only). Owned by exactly one project —
+ * the deepest project whose directory contains the file. The `language` field
+ * is forward-compat for adding `.sh`, `.ts`, `.js`, `.rb` later without a schema
+ * migration.
+ */
+export type ScriptLanguage = "python" | "shell" | "typescript" | "javascript" | "ruby";
+
+export interface ScriptEntity extends Entity {
+  type: "script";
+  data: {
+    language: ScriptLanguage;
+    /** ID of the owning ProjectEntity. */
+    projectId: string;
+    /** Path relative to the project root, forward slashes, never starts with `/`. */
+    relativePath: string;
+    /** Module-level docstring or first non-comment line if no docstring. May be null. */
+    docstring: string | null;
+    sizeBytes: number;
+  };
+}
+
+/**
  * Discriminated union of all entity subtypes.
  * Use this instead of Entity when you need type narrowing on data fields.
  * Example:
@@ -236,7 +262,8 @@ export type TypedEntity =
   | SkillEntity
   | PluginEntity
   | MarkdownEntity
-  | ConfigEntity;
+  | ConfigEntity
+  | ScriptEntity;
 
 /** Narrow a bare Entity to its TypedEntity variant via the `type` discriminator. */
 export function asTypedEntity(e: Entity): TypedEntity {

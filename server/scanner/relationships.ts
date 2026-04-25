@@ -26,7 +26,8 @@ export function buildRelationships(
   mcps: Entity[],
   skills: Entity[],
   markdowns: Entity[],
-  plugins: Entity[]
+  plugins: Entity[],
+  scripts: Entity[] = []
 ): void {
   const projectByDir = new Map<string, Entity>();
   for (const p of projects) {
@@ -254,5 +255,20 @@ export function buildRelationships(
         }
       }
     }
+  }
+
+  // === Project <-> Script relationships ===
+  // Ownership is precomputed by the script scanner (deepest-project-wins),
+  // so we just translate `data.projectId` into a relationship row.
+  for (const script of scripts) {
+    const projectId = getStr(script, "projectId");
+    if (!projectId) continue;
+    storage.addRelationship({
+      sourceId: projectId,
+      sourceType: "project",
+      targetId: script.id,
+      targetType: "script",
+      relation: "contains_script",
+    });
   }
 }

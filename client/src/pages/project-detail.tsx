@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EntityBadge, entityConfig } from "@/components/entity-badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, Server, Wand2, HardDrive, MessageSquare, ExternalLink, Edit3, ChevronRight, Layers, Zap, Clock, Terminal } from "lucide-react";
-import type { MCPEntity, SkillEntity, MarkdownEntity } from "@shared/types";
+import { ArrowLeft, FileText, Server, Wand2, HardDrive, MessageSquare, ExternalLink, Edit3, ChevronRight, Layers, Zap, Clock, Terminal, Code2, Copy, X, Check } from "lucide-react";
+import type { MCPEntity, SkillEntity, MarkdownEntity, ScriptEntity } from "@shared/types";
 import { formatBytes, relativeTime } from "@/lib/utils";
+import { useEffect, useState } from "react";
 
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();
@@ -28,6 +29,13 @@ export default function ProjectDetail() {
   const mcps = linkedEntities.filter((e): e is MCPEntity => e.type === "mcp");
   const skills = linkedEntities.filter((e): e is SkillEntity => e.type === "skill");
   const markdowns = linkedEntities.filter((e): e is MarkdownEntity => e.type === "markdown");
+  const scripts = linkedEntities.filter((e): e is ScriptEntity => e.type === "script");
+  const scriptsSorted = scripts.slice().sort((a, b) => {
+    const at = a.lastModified ? Date.parse(a.lastModified) : 0;
+    const bt = b.lastModified ? Date.parse(b.lastModified) : 0;
+    return bt - at;
+  });
+  const scriptCapped = Boolean(pdata.scriptCapped);
   const claudeMd = markdowns.find((m) => m.name === "CLAUDE.md");
 
   const projectSessions = sessionsData?.sessions || [];
@@ -93,6 +101,7 @@ export default function ProjectDetail() {
           <TabsTrigger value="mcps">MCPs ({mcps.length})</TabsTrigger>
           <TabsTrigger value="skills">Skills ({skills.length})</TabsTrigger>
           <TabsTrigger value="markdown">Markdown ({markdowns.length})</TabsTrigger>
+          <TabsTrigger value="scripts">Scripts ({scripts.length}{scriptCapped ? "+" : ""})</TabsTrigger>
           <TabsTrigger value="sessions">Sessions ({projectSessions.length})</TabsTrigger>
         </TabsList>
 
@@ -260,6 +269,23 @@ export default function ProjectDetail() {
           {markdowns.length === 0 && <p className="text-muted-foreground text-sm py-8 text-center">No markdown files linked to this project</p>}
         </TabsContent>
 
+        <TabsContent value="scripts" className="space-y-2 mt-4">
+          {scriptCapped && (
+            <p className="text-[11px] text-amber-400/80">
+              Showing the first {scripts.length} scripts found — additional files exist beyond the per-project cap.
+            </p>
+          )}
+          {scriptsSorted.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-8 text-center">
+              No Python scripts found in this project. Files matching <code className="font-mono text-[11px] bg-muted/40 px-1 rounded">**/*.py</code> appear here once they're added.
+            </p>
+          ) : (
+            scriptsSorted.map((script, i) => (
+              <ScriptRow key={script.id} script={script} index={i} />
+            ))
+          )}
+        </TabsContent>
+
         <TabsContent value="sessions" className="space-y-3 mt-4">
           {projectSessions.slice(0, 20).map((s, i) => (
             <Card
@@ -343,5 +369,131 @@ function ClaudeMdPreview({ entityId }: { entityId: string }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * One row in the project Scripts tab. Click expands a read-only source preview
+ * fetched from /api/scripts/:id/source. Hover reveals a "copy absolute path" button.
+ */
+function ScriptRow({ script, index }: { script: ScriptEntity; index: number }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const docstring = script.data.docstring;
+
+  return (
+    <Card
+      className="card-hover animate-fade-in-up"
+      style={{ animationDelay: `${Math.min(index, 20) * 30}ms` }}
+    >
+      <CardContent className="p-3">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="w-full flex items-start gap-3 text-left"
+          aria-expanded={open}
+        >
+          <div className="rounded-md bg-yellow-500/10 p-1.5 mt-0.5">
+            <Code2 className="h-4 w-4 text-yellow-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-sm font-medium">{script.name}</span>
+              <span className="text-[10px] text-muted-foreground/60 font-mono truncate" title={script.path}>
+                {script.data.relativePath}
+              </span>
+            </div>
+            {docstring && (
+              <p className="text-xs text-muted-foreground mt-1 truncate italic">{docstring}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground shrink-0">
+            <span className="font-mono">{formatBytes(script.data.sizeBytes)}</span>
+            {script.lastModified && (
+              <span title={new Date(script.lastModified).toLocaleString()}>
+                {relativeTime(script.lastModified)}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(script.path);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1200);
+              }}
+              className="p-1 rounded hover:bg-muted/60"
+              title="Copy absolute path"
+              aria-label="Copy absolute path"
+            >
+              {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
+        </button>
+
+        {open && <ScriptSourcePreview scriptId={script.id} />}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface ScriptSourceResponse {
+  id: string;
+  name: string;
+  path: string;
+  sizeBytes: number;
+  lineCount: number;
+  previewLines: number;
+  truncated: boolean;
+  content: string;
+}
+
+/** Lazy-loaded source viewer. Fetches only when the row is opened. */
+function ScriptSourcePreview({ scriptId }: { scriptId: string }) {
+  const [data, setData] = useState<ScriptSourceResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/scripts/${encodeURIComponent(scriptId)}/source`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((body: ScriptSourceResponse) => {
+        if (!cancelled) setData(body);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scriptId]);
+
+  if (error) {
+    return (
+      <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-300">
+        Could not load source: {error}
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="mt-3 text-xs text-muted-foreground/60">Loading source…</div>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      {data.truncated && (
+        <p className="text-[10px] text-amber-400/80 mb-1.5">
+          Showing first {data.previewLines} of {data.lineCount} lines.
+        </p>
+      )}
+      <pre className="text-[11px] font-mono leading-relaxed text-foreground/80 bg-muted/40 rounded-lg p-3 overflow-x-auto max-h-[420px] whitespace-pre border border-border/40">
+        {data.content}
+      </pre>
+    </div>
   );
 }

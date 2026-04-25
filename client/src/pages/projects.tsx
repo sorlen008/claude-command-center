@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { HealthIndicator } from "@/components/health-indicator";
 import { useState } from "react";
-import { Search, FolderOpen, FileText, Server, Wand2, HardDrive, MessageSquare, RefreshCw, Settings } from "lucide-react";
+import { Search, FolderOpen, FileText, Server, Wand2, HardDrive, MessageSquare, RefreshCw, Settings, Code2 } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 
 export default function Projects() {
@@ -43,8 +43,10 @@ export default function Projects() {
         <div className="space-y-3">
           {filtered.map((project, i) => {
             const pdata = project.data;
+            const scriptCount = (pdata.scriptCount as number | undefined) || 0;
+            const scriptCapped = Boolean(pdata.scriptCapped);
             // Entity breakdown bar data
-            const total = (project.mcpCount || 0) + (project.skillCount || 0) + (project.markdownCount || 0);
+            const total = (project.mcpCount || 0) + (project.skillCount || 0) + (project.markdownCount || 0) + scriptCount;
             return (
               <Card
                 key={project.id}
@@ -96,6 +98,9 @@ export default function Projects() {
                               {project.markdownCount > 0 && (
                                 <div className="bg-slate-500 shadow-[0_0_4px_rgba(100,116,139,0.4)]" style={{ width: `${(project.markdownCount / total) * 100}%` }} />
                               )}
+                              {scriptCount > 0 && (
+                                <div className="bg-yellow-500 shadow-[0_0_4px_rgba(234,179,8,0.4)]" style={{ width: `${(scriptCount / total) * 100}%` }} />
+                              )}
                             </div>
                           </div>
                         )}
@@ -119,6 +124,12 @@ export default function Projects() {
                         <div className="flex items-center gap-1" title="Markdown files">
                           <FileText className="h-3.5 w-3.5 text-slate-400" />
                           <span>{project.markdownCount}</span>
+                        </div>
+                      )}
+                      {scriptCount > 0 && (
+                        <div className="flex items-center gap-1" title={scriptCapped ? `Scripts (capped at ${scriptCount}+)` : "Scripts"}>
+                          <Code2 className="h-3.5 w-3.5 text-yellow-400" />
+                          <span>{scriptCount}{scriptCapped ? "+" : ""}</span>
                         </div>
                       )}
                       <div className="border-l border-border pl-4 flex items-center gap-3">
