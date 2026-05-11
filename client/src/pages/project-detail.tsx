@@ -1,13 +1,13 @@
 import { useParams, Link, useLocation } from "wouter";
 import { useProjectDetail } from "@/hooks/use-projects";
 import { useMarkdownContent } from "@/hooks/use-markdown";
-import { useSessions } from "@/hooks/use-sessions";
+import { useSessions, useOpenSession } from "@/hooks/use-sessions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EntityBadge, entityConfig } from "@/components/entity-badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, Server, Wand2, HardDrive, MessageSquare, ExternalLink, Edit3, ChevronRight, Layers, Zap, Clock, Terminal, Code2, Copy, X, Check, Briefcase } from "lucide-react";
+import { ArrowLeft, FileText, Server, Wand2, HardDrive, MessageSquare, ExternalLink, Edit3, ChevronRight, Layers, Zap, Clock, Terminal, Code2, Copy, X, Check, Briefcase, Loader2 } from "lucide-react";
 import type { MCPEntity, SkillEntity, MarkdownEntity, ScriptEntity } from "@shared/types";
 import { formatBytes, relativeTime } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -62,6 +62,21 @@ export default function ProjectDetail() {
     });
   })();
   const inferredOnlyCount = projectSessions.filter(p => p.origin === "inferred").length;
+
+  // One-click Resume — opens a new terminal in the session's recorded cwd
+  // and runs `claude --resume <id>`. Same flow as the main Sessions page.
+  const openSession = useOpenSession();
+  const [openState, setOpenState] = useState<{ id: string; phase: "opening" | "done" } | null>(null);
+  const handleResume = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenState({ id, phase: "opening" });
+    openSession.mutate(id, {
+      onSettled: () => {
+        setOpenState({ id, phase: "done" });
+        setTimeout(() => setOpenState(prev => prev?.id === id ? null : prev), 2000);
+      },
+    });
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -348,6 +363,27 @@ export default function ProjectDetail() {
                     </span>
                     <span className="font-mono">{s.messageCount} msgs</span>
                     <span className="font-mono">{formatBytes(s.sizeBytes)}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-7"
+                      disabled={openState?.id === s.id && openState.phase === "opening"}
+                      onClick={(e) => handleResume(s.id, e)}
+                      title={`Open a terminal in ${s.cwd || "the session's directory"} and run claude --resume`}
+                    >
+                      {openState?.id === s.id && openState.phase === "opening" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
+                      ) : openState?.id === s.id && openState.phase === "done" ? (
+                        <Check className="h-3.5 w-3.5 text-green-400" />
+                      ) : (
+                        <Terminal className="h-3.5 w-3.5 text-green-400" />
+                      )}
+                      {openState?.id === s.id && openState.phase === "opening"
+                        ? "Opening…"
+                        : openState?.id === s.id && openState.phase === "done"
+                          ? "Opened"
+                          : "Resume"}
+                    </Button>
                   </div>
                 </div>
               </CardContent>
