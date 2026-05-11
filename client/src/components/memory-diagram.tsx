@@ -3,13 +3,13 @@ import { useState } from "react";
 const tooltips: Record<string, string> = {
   start: "A new Claude Code session begins. Claude reads your project files to build its understanding.",
   claudemd: "Loaded when you cd into the project directory. Defines coding conventions, architecture, and key commands. One per project.",
-  memorymd: "Index file loaded every session. Links to all memory files. Hard limit: 200 lines — anything beyond is invisible to Claude. Keep it as a pure index.",
-  feedback: "Corrections and guidance you gave Claude — 'don't do X', 'keep doing Y'. Prevents repeating the same mistakes across sessions.",
-  project: "Ongoing work context — goals, deadlines, decisions. Helps Claude understand the bigger picture behind your requests.",
-  reference: "Pointers to external resources — IPs, URLs, dashboards, issue trackers. Where to find things outside the codebase.",
-  user: "Information about you — role, expertise, preferences. Helps Claude tailor responses to your level and style.",
-  context: "Everything Claude 'knows' at any point in the conversation. Larger always-loaded files = less room for actual work.",
-  skill: "Reusable slash commands (e.g., /commit). Only loaded into context when you invoke them — no cost when not used. No line limit.",
+  memorymd: "Index file — the ONLY memory file loaded every session. Lists all memory files with one-line descriptions so Claude knows what's available to fetch. Hard limit: 200 lines (anything beyond is truncated). Keep it a pure index.",
+  feedback: "Corrections and guidance you gave Claude — 'don't do X', 'keep doing Y'. Read on demand when a relevant topic comes up. Prevents repeating mistakes across sessions.",
+  project: "Ongoing work context — goals, deadlines, decisions. Read on demand based on the MEMORY.md description.",
+  reference: "Pointers to external resources — IPs, URLs, dashboards, issue trackers. Read on demand when the user mentions related work.",
+  user: "Information about you — role, expertise, preferences. Read on demand when relevant to the current task.",
+  context: "Everything Claude 'knows' at any point in the conversation. Always-loaded files (CLAUDE.md + MEMORY.md) cost context every session; memory files only cost context the sessions they're actually fetched.",
+  skill: "Reusable capabilities loaded on demand — either manually via /name, or auto-triggered when the user's request matches the skill's description. No cost when not used. No line limit on the skill body.",
 };
 
 interface NodeProps {
@@ -80,15 +80,15 @@ export default function MemoryDiagram() {
 
         {/* Flow lines */}
         <AnimatedLine x1={cx} y1={40} x2={cx} y2={70} hovered={hovered} relatedIds={["start"]} />
-        {/* Always loaded to three branches */}
+        {/* Always loaded → CLAUDE.md + MEMORY.md only (NOT memory files) */}
         <AnimatedLine x1={cx} y1={110} x2={120} y2={148} hovered={hovered} relatedIds={["claudemd"]} />
-        <AnimatedLine x1={cx} y1={110} x2={cx} y2={148} hovered={hovered} relatedIds={["memorymd"]} />
-        <AnimatedLine x1={cx} y1={110} x2={540} y2={148} hovered={hovered} relatedIds={["feedback","project","reference","user"]} />
-        {/* MEMORY.md arrow to memory files */}
+        <AnimatedLine x1={cx} y1={110} x2={320} y2={148} hovered={hovered} relatedIds={["memorymd"]} />
+        {/* On-demand: MEMORY.md → memory files cluster (dashed, only flows when index or files hovered) */}
         <AnimatedLine x1={390} y1={190} x2={430} y2={190} hovered={hovered} relatedIds={["memorymd","feedback","project","reference","user"]} />
-        {/* Memory files down to context */}
+        {/* Always-loaded files → context */}
         <AnimatedLine x1={120} y1={230} x2={cx} y2={375} hovered={hovered} relatedIds={["claudemd","context"]} />
         <AnimatedLine x1={cx} y1={230} x2={cx} y2={375} hovered={hovered} relatedIds={["memorymd","context"]} />
+        {/* Memory files → context (on demand only) */}
         <AnimatedLine x1={540} y1={340} x2={cx} y2={375} hovered={hovered} relatedIds={["feedback","project","reference","user","context"]} />
         {/* Context to skill */}
         <AnimatedLine x1={cx} y1={420} x2={cx} y2={455} hovered={hovered} relatedIds={["context","skill"]} />
@@ -107,9 +107,10 @@ export default function MemoryDiagram() {
         {/* MEMORY.md */}
         <DiagramNode x={250} y={148} w={140} h={82} label="MEMORY.md" sublabel="Index file (max 200 lines)" borderColor="rgba(148,163,184,0.4)" bgColor="rgba(148,163,184,0.06)" textColor="rgba(148,163,184,0.9)" id="memorymd" hovered={hovered} onHover={setHovered} />
 
-        {/* Memory Files group */}
-        <rect x={420} y={140} width={240} height={200} rx={8} fill="rgba(148,163,184,0.03)" stroke="rgba(148,163,184,0.15)" strokeWidth={1} strokeDasharray="3 2" />
-        <text x={540} y={160} textAnchor="middle" fill="rgba(148,163,184,0.5)" fontSize={10}>Memory Files (all linked)</text>
+        {/* Memory Files group — on demand, not always loaded */}
+        <rect x={420} y={123} width={240} height={217} rx={8} fill="rgba(249,115,22,0.04)" stroke="rgba(249,115,22,0.25)" strokeWidth={1} strokeDasharray="3 2" />
+        <text x={540} y={138} textAnchor="middle" fill="rgba(249,115,22,0.85)" fontSize={10} fontWeight={600}>Loaded On Demand</text>
+        <text x={540} y={158} textAnchor="middle" fill="rgba(148,163,184,0.55)" fontSize={9}>Memory files (read when MEMORY.md description matches)</text>
 
         {/* Feedback */}
         <DiagramNode x={435} y={172} w={105} h={36} label="Feedback" borderColor="rgba(245,158,11,0.4)" bgColor="rgba(245,158,11,0.06)" textColor="rgba(245,158,11,0.9)" id="feedback" hovered={hovered} onHover={setHovered} />

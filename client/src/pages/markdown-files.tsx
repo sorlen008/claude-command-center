@@ -263,8 +263,14 @@ function MemoryLearnGuide({ show, onToggle }: { show: boolean; onToggle: () => v
             <h4 className="text-xs font-semibold uppercase tracking-wider mb-1.5">Loaded every session</h4>
             <ul className="space-y-1 text-xs text-muted-foreground">
               <li><strong className="text-foreground">CLAUDE.md</strong> — project instructions, loaded in full</li>
-              <li><strong className="text-foreground">MEMORY.md</strong> — index file. <span className="text-red-400">Hard limit: 200 lines</span></li>
-              <li><strong className="text-foreground">Memory files</strong> linked from MEMORY.md</li>
+              <li><strong className="text-foreground">MEMORY.md</strong> — index only. <span className="text-red-400">Hard limit: 200 lines</span> (anything beyond is truncated)</li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider mb-1.5">Loaded on demand</h4>
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              <li><strong className="text-foreground">Memory files</strong> — Claude reads them via the Read tool when the description in MEMORY.md matches the current task. <span className="text-muted-foreground/60">They don't burn context on sessions where they aren't relevant — so keep each file focused, not necessarily tiny.</span></li>
+              <li><strong className="text-foreground">Skills</strong> — only enter context when invoked (manually via <code className="text-[10px]">/name</code>, or auto-triggered when the user's request matches the skill's description).</li>
             </ul>
           </div>
           <div>
