@@ -112,12 +112,13 @@ router.get("/api/sessions", (req: Request, res: Response) => {
     hideEmpty: qstr(req.query.hideEmpty),
     activeOnly: qstr(req.query.activeOnly),
     project: qstr(req.query.project),
+    inferredProject: qstr(req.query.inferredProject),
     page: qstr(req.query.page),
     limit: qstr(req.query.limit),
   }, res);
   if (!params) return;
 
-  const { q, sort, order, hideEmpty, activeOnly, project, page, limit } = params;
+  const { q, sort, order, hideEmpty, activeOnly, project, inferredProject, page, limit } = params;
 
   let sessions = getCachedSessions();
   const stats = getCachedStats();
@@ -127,6 +128,11 @@ router.get("/api/sessions", (req: Request, res: Response) => {
       const decoded = decodeProjectKey(s.projectKey);
       return decoded.endsWith('/' + project) || decoded.endsWith('\\' + project) || s.projectKey === project;
     });
+  }
+  if (inferredProject) {
+    sessions = inferredProject === "(none)"
+      ? sessions.filter(s => !s.inferredProject)
+      : sessions.filter(s => s.inferredProject === inferredProject);
   }
   if (hideEmpty === "true") sessions = sessions.filter(s => !s.isEmpty);
   if (activeOnly === "true") sessions = sessions.filter(s => s.isActive);
@@ -182,6 +188,29 @@ router.get("/api/sessions", (req: Request, res: Response) => {
     canUndo: lastDeleteBatch.length > 0,
     pagination: { page, limit, total, totalPages },
   });
+});
+
+/** GET /api/sessions/inferred-projects — Aggregate session counts grouped by inferred project.
+ *  Powers the "Inferred project" filter dropdown and group-by view. */
+router.get("/api/sessions/inferred-projects", (_req: Request, res: Response) => {
+  const sessions = getCachedSessions();
+  const agg = new Map<string, { sessionCount: number; totalSize: number; totalEdits: number }>();
+  let unbucketed = 0;
+  let unbucketedSize = 0;
+  for (const s of sessions) {
+    if (s.isEmpty) continue;
+    const key = s.inferredProject;
+    if (!key) { unbucketed++; unbucketedSize += s.sizeBytes; continue; }
+    let entry = agg.get(key);
+    if (!entry) { entry = { sessionCount: 0, totalSize: 0, totalEdits: 0 }; agg.set(key, entry); }
+    entry.sessionCount++;
+    entry.totalSize += s.sizeBytes;
+    entry.totalEdits += s.inferredProjectStats?.edits || 0;
+  }
+  const projects = Array.from(agg.entries())
+    .map(([project, v]) => ({ project, ...v }))
+    .sort((a, b) => b.sessionCount - a.sessionCount);
+  res.json({ projects, unbucketed: { sessionCount: unbucketed, totalSize: unbucketedSize } });
 });
 
 /** GET /api/sessions/search — Deep search across all session content */

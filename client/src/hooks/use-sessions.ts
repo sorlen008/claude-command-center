@@ -7,10 +7,10 @@ import type {
   ProjectDashboardResult, SessionDiffsResult, PromptTemplate, WeeklyDigest, WorkflowConfig,
   SessionNote, FileTimelineResult, NLQueryResult,
   ContinuationBrief, Decision, BashKnowledgeBase, BashSearchResult,
-  NerveCenterData, DelegationResult,
+  NerveCenterData, DelegationResult, InferredProjectAgg,
 } from "@shared/types";
 
-export function useSessions(params?: { q?: string; sort?: string; order?: string; hideEmpty?: boolean; activeOnly?: boolean; project?: string; page?: number; limit?: number }) {
+export function useSessions(params?: { q?: string; sort?: string; order?: string; hideEmpty?: boolean; activeOnly?: boolean; project?: string; inferredProject?: string; page?: number; limit?: number }) {
   const p = new URLSearchParams();
   if (params?.q) p.set("q", params.q);
   if (params?.sort) p.set("sort", params.sort);
@@ -18,11 +18,19 @@ export function useSessions(params?: { q?: string; sort?: string; order?: string
   if (params?.hideEmpty) p.set("hideEmpty", "true");
   if (params?.activeOnly) p.set("activeOnly", "true");
   if (params?.project) p.set("project", params.project);
+  if (params?.inferredProject) p.set("inferredProject", params.inferredProject);
   if (params?.page) p.set("page", String(params.page));
   if (params?.limit) p.set("limit", String(params.limit));
   const qs = p.toString();
   return useQuery<{ sessions: SessionData[]; stats: SessionStats; page?: number; limit?: number; total?: number; totalPages?: number }>({
     queryKey: [`/api/sessions${qs ? `?${qs}` : ""}`],
+  });
+}
+
+export function useInferredProjects() {
+  return useQuery<{ projects: InferredProjectAgg[]; unbucketed: { sessionCount: number; totalSize: number } }>({
+    queryKey: ["/api/sessions/inferred-projects"],
+    staleTime: 30_000,
   });
 }
 

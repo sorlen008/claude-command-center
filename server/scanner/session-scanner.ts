@@ -1,4 +1,5 @@
 import { CLAUDE_DIR, dirExists, fileExists, readHead, readTailTs, extractText, normPath } from "./utils";
+import { getInferredProject, warmInferenceCache } from "./project-inference";
 import path from "path";
 import fs from "fs";
 import type { SessionData, SessionStats } from "@shared/types";
@@ -240,6 +241,9 @@ function parseSession(
     const isEmpty = !firstMessage || records.length < 3;
     const tags = extractTags(records);
 
+    const normalizedPath = filePath.replace(/\\/g, "/");
+    const inferred = getInferredProject(basename, normalizedPath, stat.size);
+
     return {
       id: basename,
       slug,
@@ -251,11 +255,13 @@ function parseSession(
       tags,
       isEmpty,
       isActive: activeSessions.has(basename),
-      filePath: filePath.replace(/\\/g, "/"),
+      filePath: normalizedPath,
       projectKey,
       cwd,
       version,
       gitBranch,
+      inferredProject: inferred.inferredProject || undefined,
+      inferredProjectStats: inferred.stats || undefined,
     };
   } catch {
     return null;
@@ -335,6 +341,16 @@ export function scanAllSessions(): {
   // Update cache
   cachedSessions = allSessions;
   cachedStats = stats;
+
+  // Warm the inference cache in the background for sessions that weren't
+  // cached or grew since last scan. Fire-and-forget — next scan will pick
+  // up the populated values via getInferredProject().
+  const needsInference = allSessions
+    .filter(s => !s.inferredProject && !s.isEmpty)
+    .map(s => ({ id: s.id, filePath: s.filePath, sizeBytes: s.sizeBytes }));
+  if (needsInference.length > 0) {
+    void warmInferenceCache(needsInference).catch(() => {});
+  }
 
   return { sessions: allSessions, stats, perProject: projectAggs };
 }

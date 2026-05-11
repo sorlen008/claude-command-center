@@ -453,6 +453,26 @@ export interface SessionData {
   isPinned?: boolean;
   note?: string;
   customName?: string;
+  /** Project inferred from tool calls (Edit/Write/Read paths), independent of cwd.
+   *  Undefined when there's insufficient signal (< MIN_OPS file operations) or
+   *  confidence (< MIN_CONFIDENCE share to a single project). */
+  inferredProject?: string;
+  inferredProjectStats?: {
+    project: string;
+    weighted: number;
+    files: number;
+    edits: number;
+    confidence: number;
+    breakdown: Array<{ project: string; weighted: number }>;
+  };
+}
+
+/** Aggregate row returned by GET /api/sessions/inferred-projects. */
+export interface InferredProjectAgg {
+  project: string;
+  sessionCount: number;
+  totalSize: number;
+  totalEdits: number;
 }
 
 export interface SessionSummary {

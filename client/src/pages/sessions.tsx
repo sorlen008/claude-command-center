@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useSaveSessionTitle, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate, useOpenSession } from "@/hooks/use-sessions";
+import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useSaveSessionTitle, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate, useOpenSession, useInferredProjects } from "@/hooks/use-sessions";
 import { useAppSettings } from "@/hooks/use-settings";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,7 +17,7 @@ import {
   GitCommit, Clipboard, BarChart3, FolderKanban, Calendar, Settings,
   Plus, Play, BookOpen, Pin, StickyNote, MessageCircleQuestion,
   Server, Brain, TerminalSquare, Phone, Send, ArrowRight, Lightbulb, Download,
-  Pencil,
+  Pencil, Briefcase,
 } from "lucide-react";
 import type { SessionData, DeepSearchMatch } from "@shared/types";
 import { formatBytes, relativeTime as _relativeTime, formatDuration } from "@/lib/utils";
@@ -76,6 +76,10 @@ export default function Sessions() {
   // Read project filter and deep-link session ID from URL
   const urlParams = new URLSearchParams(window.location.search);
   const [projectFilter, setProjectFilter] = useState(urlParams.get("project") || "");
+  const [inferredProjectFilter, setInferredProjectFilter] = useState(urlParams.get("inferredProject") || "");
+  const [groupByProject, setGroupByProject] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const inferredProjectsList = useInferredProjects();
   // If ?session=<id> is in the URL, expand that session on mount and scroll
   // it into view. Used by Live View to navigate to a specific session.
   useEffect(() => {
@@ -97,7 +101,7 @@ export default function Sessions() {
   }, []);
 
   const [sort, order] = sortKey.split(":") as [string, string];
-  const { data, isLoading } = useSessions({ q: search || undefined, sort, order, hideEmpty, activeOnly, project: projectFilter || undefined, page, limit: PAGE_SIZE });
+  const { data, isLoading } = useSessions({ q: search || undefined, sort, order, hideEmpty, activeOnly, project: projectFilter || undefined, inferredProject: inferredProjectFilter || undefined, page, limit: PAGE_SIZE });
   const expandedDetail = useSessionDetail(expanded || undefined);
   const deleteSession = useDeleteSession();
   const bulkDelete = useBulkDeleteSessions();
@@ -222,6 +226,31 @@ export default function Sessions() {
           >
             Active Only
           </button>
+          <button
+            onClick={() => setGroupByProject(!groupByProject)}
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border transition-colors ${
+              groupByProject ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+            title="Group sessions by inferred project (the project the session actually worked on)"
+          >
+            <Briefcase className="h-3.5 w-3.5" /> Group by project
+          </button>
+          <select
+            value={inferredProjectFilter}
+            onChange={e => { setInferredProjectFilter(e.target.value); setPage(1); }}
+            className="text-xs px-2.5 py-1.5 rounded-md border border-border bg-background text-foreground max-w-[180px]"
+            title="Filter by inferred project (based on which files the session edited)"
+          >
+            <option value="">All projects</option>
+            {inferredProjectsList.data?.projects.map(p => (
+              <option key={p.project} value={p.project}>
+                {p.project} ({p.sessionCount})
+              </option>
+            ))}
+            {inferredProjectsList.data?.unbucketed.sessionCount ? (
+              <option value="(none)">(uncategorized) ({inferredProjectsList.data.unbucketed.sessionCount})</option>
+            ) : null}
+          </select>
           <select
             value={sortKey}
             onChange={e => setSortKey(e.target.value)}
@@ -489,19 +518,80 @@ export default function Sessions() {
               <div className="border-b border-border/30" />
             </>
           )}
-          {sessions.filter(s => !s.isPinned || !!search).map((s, i) => (
-            <SessionCard
-              key={s.id} session={s} index={i}
-              isSelected={selected.has(s.id)} isExpanded={expanded === s.id} copiedId={copiedId}
-              detail={expanded === s.id ? expandedDetail.data : undefined}
-              onToggleSelect={handleToggleSelect} onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
-              onCopyId={handleCopyId} onCopyResume={handleCopyResume} onResume={handleResume} onOpenFolder={handleOpenFolder}
-              onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
-              onSummarize={(id) => summarizeSession.mutate(id)} isSummarizing={summarizeSession.isPending}
-              onTogglePin={(id) => togglePin.mutate(id)} onSaveNote={(id, text) => saveNote.mutate({ id, text })}
-              searchQuery={search}
-            />
-          ))}
+          {(() => {
+            const list = sessions.filter(s => !s.isPinned || !!search);
+            if (!groupByProject) {
+              return list.map((s, i) => (
+                <SessionCard
+                  key={s.id} session={s} index={i}
+                  isSelected={selected.has(s.id)} isExpanded={expanded === s.id} copiedId={copiedId}
+                  detail={expanded === s.id ? expandedDetail.data : undefined}
+                  onToggleSelect={handleToggleSelect} onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
+                  onCopyId={handleCopyId} onCopyResume={handleCopyResume} onResume={handleResume} onOpenFolder={handleOpenFolder}
+                  onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
+                  onSummarize={(id) => summarizeSession.mutate(id)} isSummarizing={summarizeSession.isPending}
+                  onTogglePin={(id) => togglePin.mutate(id)} onSaveNote={(id, text) => saveNote.mutate({ id, text })}
+                  searchQuery={search}
+                />
+              ));
+            }
+            // Group-by-project view
+            const groups = new Map<string, { sessions: typeof list; size: number }>();
+            for (const s of list) {
+              const key = s.inferredProject || "(uncategorized)";
+              let g = groups.get(key);
+              if (!g) { g = { sessions: [], size: 0 }; groups.set(key, g); }
+              g.sessions.push(s);
+              g.size += s.sizeBytes;
+            }
+            const sorted = Array.from(groups.entries())
+              .sort((a, b) => {
+                // (uncategorized) always last
+                if (a[0] === "(uncategorized)") return 1;
+                if (b[0] === "(uncategorized)") return -1;
+                return b[1].sessions.length - a[1].sessions.length;
+              });
+            let globalIdx = 0;
+            return sorted.map(([groupKey, g]) => {
+              const collapsed = collapsedGroups.has(groupKey);
+              return (
+                <div key={groupKey} className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setCollapsedGroups(prev => {
+                      const next = new Set(prev);
+                      if (next.has(groupKey)) next.delete(groupKey); else next.add(groupKey);
+                      return next;
+                    })}
+                    className="w-full flex items-center gap-2 text-xs px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors group/grp"
+                  >
+                    {collapsed ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                    <Briefcase className="h-3.5 w-3.5 text-orange-400" />
+                    <span className="font-medium text-foreground">{groupKey}</span>
+                    <span className="text-muted-foreground/70">
+                      {g.sessions.length} session{g.sessions.length === 1 ? "" : "s"} · {formatBytes(g.size)}
+                    </span>
+                  </button>
+                  {!collapsed && g.sessions.map(s => {
+                    const i = globalIdx++;
+                    return (
+                      <SessionCard
+                        key={s.id} session={s} index={i}
+                        isSelected={selected.has(s.id)} isExpanded={expanded === s.id} copiedId={copiedId}
+                        detail={expanded === s.id ? expandedDetail.data : undefined}
+                        onToggleSelect={handleToggleSelect} onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
+                        onCopyId={handleCopyId} onCopyResume={handleCopyResume} onResume={handleResume} onOpenFolder={handleOpenFolder}
+                        onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
+                        onSummarize={(id) => summarizeSession.mutate(id)} isSummarizing={summarizeSession.isPending}
+                        onTogglePin={(id) => togglePin.mutate(id)} onSaveNote={(id, text) => saveNote.mutate({ id, text })}
+                        searchQuery={search}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 
@@ -1440,6 +1530,13 @@ function SessionCard({
   const isOpening = copiedId === "opening:" + s.id;
   const justOpened = copiedId === "opened:" + s.id;
   const projectName = cwdBasename(s.cwd) || s.projectKey;
+  // Show the inferred-project chip only when it differs from the literal cwd
+  // basename — otherwise the two chips show the same value and look noisy.
+  const showInferredChip = !!s.inferredProject && s.inferredProject !== projectName;
+  const inferredTooltip = s.inferredProjectStats
+    ? `Inferred from ${s.inferredProjectStats.edits} edit${s.inferredProjectStats.edits === 1 ? "" : "s"} across ${s.inferredProjectStats.files} file${s.inferredProjectStats.files === 1 ? "" : "s"} (${Math.round(s.inferredProjectStats.confidence * 100)}% confidence)\n` +
+      s.inferredProjectStats.breakdown.map(b => `  • ${b.project}: ${b.weighted}`).join("\n")
+    : "";
   const [noteText, setNoteText] = useState(s.note || "");
   const [editingNote, setEditingNote] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -1579,6 +1676,15 @@ function SessionCard({
                     <FolderOpen className="h-2.5 w-2.5 mr-0.5" />{projectName}
                   </Badge>
                 </>
+              )}
+              {showInferredChip && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 border-orange-500/30 text-orange-400 font-mono"
+                  title={inferredTooltip}
+                >
+                  <Briefcase className="h-2.5 w-2.5 mr-0.5" />{s.inferredProject}
+                </Badge>
               )}
               {s.tags.length > 0 && (
                 <>
@@ -2042,6 +2148,10 @@ function DeepSearchCard({
   const isOpening = copiedId === "opening:" + s.id;
   const justOpened = copiedId === "opened:" + s.id;
   const projectName = cwdBasename(s.cwd) || s.projectKey;
+  const showInferredChip = !!s.inferredProject && s.inferredProject !== projectName;
+  const inferredTooltip = s.inferredProjectStats
+    ? `Inferred from ${s.inferredProjectStats.edits} edit${s.inferredProjectStats.edits === 1 ? "" : "s"} across ${s.inferredProjectStats.files} file${s.inferredProjectStats.files === 1 ? "" : "s"} (${Math.round(s.inferredProjectStats.confidence * 100)}% confidence)`
+    : "";
 
   return (
     <Card
@@ -2108,6 +2218,15 @@ function DeepSearchCard({
                     <FolderOpen className="h-2.5 w-2.5 mr-0.5" />{projectName}
                   </Badge>
                 </>
+              )}
+              {showInferredChip && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 border-orange-500/30 text-orange-400 font-mono"
+                  title={inferredTooltip}
+                >
+                  <Briefcase className="h-2.5 w-2.5 mr-0.5" />{s.inferredProject}
+                </Badge>
               )}
               {s.hasSummary && (
                 <>
