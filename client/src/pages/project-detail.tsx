@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EntityBadge, entityConfig } from "@/components/entity-badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, Server, Wand2, HardDrive, MessageSquare, ExternalLink, Edit3, ChevronRight, Layers, Zap, Clock, Terminal, Code2, Copy, X, Check } from "lucide-react";
+import { ArrowLeft, FileText, Server, Wand2, HardDrive, MessageSquare, ExternalLink, Edit3, ChevronRight, Layers, Zap, Clock, Terminal, Code2, Copy, X, Check, Briefcase } from "lucide-react";
 import type { MCPEntity, SkillEntity, MarkdownEntity, ScriptEntity } from "@shared/types";
 import { formatBytes, relativeTime } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -18,7 +18,13 @@ export default function ProjectDetail() {
   const [, setLocation] = useLocation();
 
   const projectFilter = data?.project.data.projectKey || data?.project.path.split("/").pop() || "";
-  const { data: sessionsData } = useSessions({ project: projectFilter, sort: "lastTs", order: "desc" });
+  // Sessions whose literal cwd was inside this project (cwd-based match).
+  const { data: sessionsData } = useSessions({ project: projectFilter, sort: "lastTs", order: "desc", limit: 100 });
+  // Sessions inferred to have worked on this project from elsewhere. Inferred
+  // project names are lowercased (server-side normalization), so match against
+  // the lowercased basename of the project path.
+  const inferredKey = (data?.project.path.split(/[\\/]/).pop() || projectFilter).toLowerCase();
+  const { data: inferredSessionsData } = useSessions({ inferredProject: inferredKey, sort: "lastTs", order: "desc", limit: 100 });
 
   if (isLoading) return <div className="p-6 text-muted-foreground">Loading...</div>;
   if (!data) return <div className="p-6 text-muted-foreground">Project not found</div>;
@@ -38,7 +44,24 @@ export default function ProjectDetail() {
   const scriptCapped = Boolean(pdata.scriptCapped);
   const claudeMd = markdowns.find((m) => m.name === "CLAUDE.md");
 
-  const projectSessions = sessionsData?.sessions || [];
+  // Merge cwd-based and inferred sessions, deduping by session id. Tag each
+  // entry with its match origin so the UI can label it appropriately.
+  const projectSessions = (() => {
+    const cwdList = sessionsData?.sessions || [];
+    const inferredList = inferredSessionsData?.sessions || [];
+    const byId = new Map<string, { session: typeof cwdList[number]; origin: "cwd" | "inferred" | "both" }>();
+    for (const s of cwdList) byId.set(s.id, { session: s, origin: "cwd" });
+    for (const s of inferredList) {
+      const existing = byId.get(s.id);
+      byId.set(s.id, { session: s, origin: existing ? "both" : "inferred" });
+    }
+    return Array.from(byId.values()).sort((a, b) => {
+      const ats = a.session.lastTs || a.session.firstTs || "";
+      const bts = b.session.lastTs || b.session.firstTs || "";
+      return bts.localeCompare(ats);
+    });
+  })();
+  const inferredOnlyCount = projectSessions.filter(p => p.origin === "inferred").length;
 
   return (
     <div className="p-6 space-y-6">
@@ -102,7 +125,9 @@ export default function ProjectDetail() {
           <TabsTrigger value="skills">Skills ({skills.length})</TabsTrigger>
           <TabsTrigger value="markdown">Markdown ({markdowns.length})</TabsTrigger>
           <TabsTrigger value="scripts">Scripts ({scripts.length}{scriptCapped ? "+" : ""})</TabsTrigger>
-          <TabsTrigger value="sessions">Sessions ({projectSessions.length})</TabsTrigger>
+          <TabsTrigger value="sessions" title={inferredOnlyCount > 0 ? `${projectSessions.length - inferredOnlyCount} started here, ${inferredOnlyCount} inferred from edits` : undefined}>
+            Sessions ({projectSessions.length}{inferredOnlyCount > 0 ? <><span className="text-orange-400 ml-0.5">+{inferredOnlyCount}</span></> : null})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -287,7 +312,13 @@ export default function ProjectDetail() {
         </TabsContent>
 
         <TabsContent value="sessions" className="space-y-3 mt-4">
-          {projectSessions.slice(0, 20).map((s, i) => (
+          {inferredOnlyCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              <span className="text-foreground">{projectSessions.length - inferredOnlyCount}</span> started in this directory,{" "}
+              <span className="text-orange-400">{inferredOnlyCount}</span> launched elsewhere but worked on files here (inferred from edits).
+            </p>
+          )}
+          {projectSessions.slice(0, 20).map(({ session: s, origin }, i) => (
             <Card
               key={s.id}
               className="card-hover animate-fade-in-up"
@@ -300,6 +331,15 @@ export default function ProjectDetail() {
                     <span className="text-sm font-medium truncate">
                       {s.firstMessage || "(empty session)"}
                     </span>
+                    {origin === "inferred" && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 border-orange-500/30 text-orange-400 flex-shrink-0"
+                        title={`Started in ${s.cwd || "another directory"}, inferred to belong to this project from ${s.inferredProjectStats?.edits ?? "?"} edits`}
+                      >
+                        <Briefcase className="h-2.5 w-2.5 mr-0.5" />inferred
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
