@@ -26,6 +26,23 @@ export default function ProjectDetail() {
   const inferredKey = (data?.project.path.split(/[\\/]/).pop() || projectFilter).toLowerCase();
   const { data: inferredSessionsData } = useSessions({ inferredProject: inferredKey, sort: "lastTs", order: "desc", limit: 100 });
 
+  // One-click Resume — opens a new terminal in the session's recorded cwd
+  // and runs `claude --resume <id>`. Same flow as the main Sessions page.
+  // IMPORTANT: must be declared BEFORE the early returns below, otherwise
+  // the hook count differs between renders (rules-of-hooks violation).
+  const openSession = useOpenSession();
+  const [openState, setOpenState] = useState<{ id: string; phase: "opening" | "done" } | null>(null);
+  const handleResume = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenState({ id, phase: "opening" });
+    openSession.mutate(id, {
+      onSettled: () => {
+        setOpenState({ id, phase: "done" });
+        setTimeout(() => setOpenState(prev => prev?.id === id ? null : prev), 2000);
+      },
+    });
+  };
+
   if (isLoading) return <div className="p-6 text-muted-foreground">Loading...</div>;
   if (!data) return <div className="p-6 text-muted-foreground">Project not found</div>;
 
@@ -62,21 +79,6 @@ export default function ProjectDetail() {
     });
   })();
   const inferredOnlyCount = projectSessions.filter(p => p.origin === "inferred").length;
-
-  // One-click Resume — opens a new terminal in the session's recorded cwd
-  // and runs `claude --resume <id>`. Same flow as the main Sessions page.
-  const openSession = useOpenSession();
-  const [openState, setOpenState] = useState<{ id: string; phase: "opening" | "done" } | null>(null);
-  const handleResume = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpenState({ id, phase: "opening" });
-    openSession.mutate(id, {
-      onSettled: () => {
-        setOpenState({ id, phase: "done" });
-        setTimeout(() => setOpenState(prev => prev?.id === id ? null : prev), 2000);
-      },
-    });
-  };
 
   return (
     <div className="p-6 space-y-6">
