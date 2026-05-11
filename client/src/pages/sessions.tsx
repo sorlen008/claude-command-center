@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useSaveSessionTitle, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate } from "@/hooks/use-sessions";
+import { useSessions, useSessionDetail, useDeleteSession, useBulkDeleteSessions, useDeleteAllSessions, useUndoDeleteSessions, useDeepSearch, useSummarizeSession, useSummarizeBatch, useSessionSummary, useCostAnalytics, useFileHeatmap, useHealthAnalytics, useStaleAnalytics, useSessionCost, useSessionCommits, useContextLoader, useProjectDashboards, useSessionDiffs, usePromptTemplates, useCreatePrompt, useDeletePrompt, useWeeklyDigest, useWorkflowConfig, useUpdateWorkflow, useRunWorkflows, useTogglePin, useSaveNote, useSaveSessionTitle, useFileTimeline, useNLQuery, useContinuations, useDecisions, useExtractDecisions, useBashKnowledge, useBashSearch, useNerveCenter, useDelegate, useOpenSession } from "@/hooks/use-sessions";
 import { useAppSettings } from "@/hooks/use-settings";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -50,6 +50,13 @@ function HighlightText({ text, query }: { text: string; query: string }) {
 function relativeTime(dateStr: string | null): string {
   if (!dateStr) return "-";
   return _relativeTime(dateStr);
+}
+
+/** Last path segment of a cwd (e.g. "C:\\code\\my-project" -> "my-project"). */
+function cwdBasename(cwd: string | undefined | null): string {
+  if (!cwd) return "";
+  const parts = cwd.split(/[\\/]+/).filter(Boolean);
+  return parts[parts.length - 1] || "";
 }
 
 export default function Sessions() {
@@ -114,6 +121,18 @@ export default function Sessions() {
     navigator.clipboard.writeText(`claude --resume ${id}`);
     setCopiedId("resume:" + id);
     setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  const openSession = useOpenSession();
+  const handleResume = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCopiedId("opening:" + id);
+    openSession.mutate(id, {
+      onSettled: () => {
+        setCopiedId("opened:" + id);
+        setTimeout(() => setCopiedId(null), 2000);
+      },
+    });
   };
 
   const handleCopyId = (id: string, e: React.MouseEvent) => {
@@ -395,6 +414,7 @@ export default function Sessions() {
                 onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
                 onCopyId={handleCopyId}
                 onCopyResume={handleCopyResume}
+                onResume={handleResume}
                 onOpenFolder={handleOpenFolder}
                 onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
                 onSummarize={(id) => summarizeSession.mutate(id)}
@@ -431,6 +451,7 @@ export default function Sessions() {
                 isExpanded={expanded === match.sessionId}
                 onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
                 onCopyResume={handleCopyResume}
+                onResume={handleResume}
                 copiedId={copiedId}
                 onSummarize={(id) => summarizeSession.mutate(id)}
                 isSummarizing={summarizeSession.isPending}
@@ -458,7 +479,7 @@ export default function Sessions() {
                   isSelected={selected.has(s.id)} isExpanded={expanded === s.id} copiedId={copiedId}
                   detail={expanded === s.id ? expandedDetail.data : undefined}
                   onToggleSelect={handleToggleSelect} onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
-                  onCopyId={handleCopyId} onCopyResume={handleCopyResume} onOpenFolder={handleOpenFolder}
+                  onCopyId={handleCopyId} onCopyResume={handleCopyResume} onResume={handleResume} onOpenFolder={handleOpenFolder}
                   onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
                   onSummarize={(id) => summarizeSession.mutate(id)} isSummarizing={summarizeSession.isPending}
                   onTogglePin={(id) => togglePin.mutate(id)} onSaveNote={(id, text) => saveNote.mutate({ id, text })}
@@ -474,7 +495,7 @@ export default function Sessions() {
               isSelected={selected.has(s.id)} isExpanded={expanded === s.id} copiedId={copiedId}
               detail={expanded === s.id ? expandedDetail.data : undefined}
               onToggleSelect={handleToggleSelect} onToggleExpand={(id) => setExpanded(expanded === id ? null : id)}
-              onCopyId={handleCopyId} onCopyResume={handleCopyResume} onOpenFolder={handleOpenFolder}
+              onCopyId={handleCopyId} onCopyResume={handleCopyResume} onResume={handleResume} onOpenFolder={handleOpenFolder}
               onDelete={(id, e) => { e.stopPropagation(); setDeleteConfirm({ type: "single", id }); }}
               onSummarize={(id) => summarizeSession.mutate(id)} isSummarizing={summarizeSession.isPending}
               onTogglePin={(id) => togglePin.mutate(id)} onSaveNote={(id, text) => saveNote.mutate({ id, text })}
@@ -1387,6 +1408,7 @@ function SessionCard({
   onToggleExpand,
   onCopyId,
   onCopyResume,
+  onResume,
   onOpenFolder,
   onDelete,
   onSummarize,
@@ -1405,6 +1427,7 @@ function SessionCard({
   onToggleExpand: (id: string) => void;
   onCopyId: (id: string, e: React.MouseEvent) => void;
   onCopyResume: (id: string, e: React.MouseEvent) => void;
+  onResume: (id: string, e: React.MouseEvent) => void;
   onOpenFolder: (filePath: string, e: React.MouseEvent) => void;
   onDelete: (id: string, e: React.MouseEvent) => void;
   onSummarize: (id: string) => void;
@@ -1414,6 +1437,9 @@ function SessionCard({
   searchQuery?: string;
 }) {
   const resumeCopied = copiedId === "resume:" + s.id;
+  const isOpening = copiedId === "opening:" + s.id;
+  const justOpened = copiedId === "opened:" + s.id;
+  const projectName = cwdBasename(s.cwd) || s.projectKey;
   const [noteText, setNoteText] = useState(s.note || "");
   const [editingNote, setEditingNote] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -1542,6 +1568,18 @@ function SessionCard({
                   <span className="text-[11px] text-muted-foreground/60 font-mono truncate max-w-[180px]"><HighlightText text={s.slug} query={searchQuery || ""} /></span>
                 </>
               )}
+              {projectName && (
+                <>
+                  <span className="text-muted-foreground/30 text-[11px]">/</span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 border-cyan-500/30 text-cyan-400 font-mono"
+                    title={s.cwd || s.projectKey}
+                  >
+                    <FolderOpen className="h-2.5 w-2.5 mr-0.5" />{projectName}
+                  </Badge>
+                </>
+              )}
               {s.tags.length > 0 && (
                 <>
                   <span className="text-muted-foreground/30 text-[11px]">/</span>
@@ -1611,14 +1649,28 @@ function SessionCard({
               </button>
             )}
             <button
+              onClick={(e) => onResume(s.id, e)}
+              disabled={isOpening}
+              className="p-1.5 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50"
+              title={`Resume in terminal (cd ${s.cwd || "?"} && claude --resume)`}
+            >
+              {isOpening ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
+              ) : justOpened ? (
+                <Check className="h-3.5 w-3.5 text-green-400" />
+              ) : (
+                <Terminal className="h-3.5 w-3.5 text-green-400" />
+              )}
+            </button>
+            <button
               onClick={(e) => onCopyResume(s.id, e)}
-              className="p-1.5 rounded hover:bg-green-500/10 transition-colors"
+              className="p-1.5 rounded hover:bg-accent transition-colors"
               title="Copy resume command"
             >
               {resumeCopied ? (
                 <Check className="h-3.5 w-3.5 text-green-400" />
               ) : (
-                <Terminal className="h-3.5 w-3.5 text-green-400" />
+                <Copy className="h-3.5 w-3.5 text-muted-foreground" />
               )}
             </button>
             <button
@@ -1715,9 +1767,22 @@ function SessionCard({
 
             {/* Resume command */}
             <div>
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Resume Command</span>
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Resume</span>
+              {s.cwd && (
+                <p className="text-[11px] text-muted-foreground/70 font-mono mt-1">in <span className="text-cyan-400">{s.cwd}</span></p>
+              )}
               <div className="flex items-center gap-2 mt-1">
                 <code className="text-xs font-mono bg-muted px-3 py-1.5 rounded flex-1">claude --resume {s.id}</code>
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={isOpening}
+                  onClick={(e) => onResume(s.id, e)}
+                  title={`Opens a new terminal in ${s.cwd || "the session's directory"} and runs claude --resume`}
+                >
+                  {isOpening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : justOpened ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Terminal className="h-3.5 w-3.5" />}
+                  {isOpening ? "Opening…" : justOpened ? "Opened" : "Resume in Terminal"}
+                </Button>
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={(e) => onCopyResume(s.id, e)}>
                   {resumeCopied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
                   {resumeCopied ? "Copied" : "Copy"}
@@ -1956,6 +2021,7 @@ function DeepSearchCard({
   isExpanded,
   onToggleExpand,
   onCopyResume,
+  onResume,
   copiedId,
   onSummarize,
   isSummarizing,
@@ -1966,12 +2032,16 @@ function DeepSearchCard({
   isExpanded: boolean;
   onToggleExpand: (id: string) => void;
   onCopyResume: (id: string, e: React.MouseEvent) => void;
+  onResume: (id: string, e: React.MouseEvent) => void;
   copiedId: string | null;
   onSummarize: (id: string) => void;
   isSummarizing: boolean;
 }) {
   const s = match.session;
   const resumeCopied = copiedId === "resume:" + s.id;
+  const isOpening = copiedId === "opening:" + s.id;
+  const justOpened = copiedId === "opened:" + s.id;
+  const projectName = cwdBasename(s.cwd) || s.projectKey;
 
   return (
     <Card
@@ -2021,12 +2091,24 @@ function DeepSearchCard({
             </div>
 
             {/* Meta line */}
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono flex-wrap">
               <span>{relativeTime(s.lastTs)}</span>
               <span className="text-muted-foreground/30">/</span>
               <span>{s.messageCount} msgs</span>
               <span className="text-muted-foreground/30">/</span>
               <span>{formatBytes(s.sizeBytes)}</span>
+              {projectName && (
+                <>
+                  <span className="text-muted-foreground/30">/</span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 border-cyan-500/30 text-cyan-400 font-mono"
+                    title={s.cwd || s.projectKey}
+                  >
+                    <FolderOpen className="h-2.5 w-2.5 mr-0.5" />{projectName}
+                  </Badge>
+                </>
+              )}
               {s.hasSummary && (
                 <>
                   <span className="text-muted-foreground/30">/</span>
@@ -2041,11 +2123,25 @@ function DeepSearchCard({
           {/* Hover actions */}
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             <button
+              onClick={(e) => onResume(s.id, e)}
+              disabled={isOpening}
+              className="p-1.5 rounded hover:bg-green-500/10 transition-colors disabled:opacity-50"
+              title={`Resume in terminal (cd ${s.cwd || "?"} && claude --resume)`}
+            >
+              {isOpening ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
+              ) : justOpened ? (
+                <Check className="h-3.5 w-3.5 text-green-400" />
+              ) : (
+                <Terminal className="h-3.5 w-3.5 text-green-400" />
+              )}
+            </button>
+            <button
               onClick={(e) => onCopyResume(s.id, e)}
-              className="p-1.5 rounded hover:bg-green-500/10 transition-colors"
+              className="p-1.5 rounded hover:bg-accent transition-colors"
               title="Copy resume command"
             >
-              {resumeCopied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Terminal className="h-3.5 w-3.5 text-green-400" />}
+              {resumeCopied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
             </button>
           </div>
 
@@ -2083,10 +2179,23 @@ function DeepSearchCard({
             {s.hasSummary && <SessionSummarySection sessionId={s.id} />}
 
             {/* Actions */}
+            {s.cwd && (
+              <p className="text-[11px] text-muted-foreground/70 font-mono">in <span className="text-cyan-400">{s.cwd}</span></p>
+            )}
             <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="gap-1.5"
+                disabled={isOpening}
+                onClick={(e) => onResume(s.id, e)}
+                title={`Opens a new terminal in ${s.cwd || "the session's directory"} and runs claude --resume`}
+              >
+                {isOpening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : justOpened ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Terminal className="h-3.5 w-3.5" />}
+                {isOpening ? "Opening…" : justOpened ? "Opened" : "Resume in Terminal"}
+              </Button>
               <Button size="sm" variant="outline" className="gap-1.5" onClick={(e) => onCopyResume(s.id, e)}>
-                {resumeCopied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Terminal className="h-3.5 w-3.5" />}
-                {resumeCopied ? "Copied" : "Resume"}
+                {resumeCopied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                {resumeCopied ? "Copied" : "Copy"}
               </Button>
               <Button
                 variant="outline"

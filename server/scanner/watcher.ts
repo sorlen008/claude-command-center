@@ -98,7 +98,20 @@ export function startWatcher(): void {
       /node_modules/,
       /\.git/,
       /command-center\.json$/,  // Don't watch our own DB file
+      /[\/\\]plugins[\/\\]cache[\/\\]temp_/,  // Plugin git temp checkouts churn rapidly and trigger EPERM
     ],
+  });
+
+  // Chokidar's FSWatcher emits 'error' for transient OS issues (EPERM/ENOENT
+  // when files vanish mid-watch). Without a listener these become uncaught
+  // exceptions that crash the whole server. Log and swallow.
+  watcher.on("error", (err) => {
+    const e = err as NodeJS.ErrnoException;
+    if (e?.code === "EPERM" || e?.code === "ENOENT") {
+      console.warn(`[watcher] ignoring transient ${e.code}: ${e.path ?? e.message}`);
+      return;
+    }
+    console.error("[watcher] error:", err);
   });
 
   const triggerRescan = (eventType: string, filePath: string) => {
