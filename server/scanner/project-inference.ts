@@ -66,10 +66,16 @@ const IGNORE_SEGMENTS = new Set([
   "Temp",
 ]);
 
+/** Bump this when the inference algorithm changes (new buckets, weight tweaks,
+ *  case-folding, etc.) — entries with a different version are treated as stale
+ *  and re-scanned. */
+const CACHE_VERSION = 2;
+
 interface CacheEntry {
   fileSize: number;
   inferredProject: string | null;
   stats: InferredProjectStats | null;
+  version?: number;
 }
 
 type Cache = Record<string, CacheEntry>;
@@ -132,7 +138,10 @@ function pathToProject(absPath: string): string | null {
   if (IGNORE_SEGMENTS.has(top)) return null;
   // Treat top-level files (CLAUDE.md, MEMORY.md, etc) as "system" too — they're config.
   if (segments.length === 1) return "system";
-  return top;
+  // Case-fold project names so "Nicora" and "nicora" don't split into two buckets.
+  // Windows filesystems are case-insensitive in practice, but the recorded path
+  // case depends on what the user typed at the prompt.
+  return top.toLowerCase();
 }
 
 /**
@@ -267,13 +276,14 @@ export function getInferredProject(
 ): { inferredProject: string | null; stats: InferredProjectStats | null } {
   const c = loadCache();
   const cached = c[sessionId];
-  if (cached && cached.fileSize === fileSize) {
-    return { inferredProject: cached.inferredProject, stats: cached.stats };
+  const fresh = cached && cached.fileSize === fileSize && cached.version === CACHE_VERSION;
+  if (fresh) {
+    return { inferredProject: cached!.inferredProject, stats: cached!.stats };
   }
   // Async fire-and-forget: compute in background, persist for next scan.
   void computeInferred(filePath, fileSize).then((result) => {
     const cc = loadCache();
-    cc[sessionId] = { fileSize, inferredProject: result.inferredProject, stats: result.stats };
+    cc[sessionId] = { fileSize, inferredProject: result.inferredProject, stats: result.stats, version: CACHE_VERSION };
     scheduleFlush();
   }).catch(() => {});
   // Return stale-or-empty so the current request stays fast.
@@ -290,7 +300,10 @@ export async function warmInferenceCache(
   sessions: Array<{ id: string; filePath: string; sizeBytes: number }>,
 ): Promise<void> {
   const c = loadCache();
-  const stale = sessions.filter(s => !c[s.id] || c[s.id].fileSize !== s.sizeBytes);
+  const stale = sessions.filter(s => {
+    const e = c[s.id];
+    return !e || e.fileSize !== s.sizeBytes || e.version !== CACHE_VERSION;
+  });
   if (stale.length === 0) return;
   // Parallelism cap of 4 to avoid pegging the disk
   const CONCURRENCY = 4;
@@ -300,9 +313,9 @@ export async function warmInferenceCache(
       const s = stale[idx++];
       try {
         const result = await computeInferred(s.filePath, s.sizeBytes);
-        c[s.id] = { fileSize: s.sizeBytes, inferredProject: result.inferredProject, stats: result.stats };
+        c[s.id] = { fileSize: s.sizeBytes, inferredProject: result.inferredProject, stats: result.stats, version: CACHE_VERSION };
       } catch {
-        c[s.id] = { fileSize: s.sizeBytes, inferredProject: null, stats: null };
+        c[s.id] = { fileSize: s.sizeBytes, inferredProject: null, stats: null, version: CACHE_VERSION };
       }
     }
   });
