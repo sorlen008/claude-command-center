@@ -2,16 +2,22 @@
  * New-User Safety Tests
  *
  * These tests ensure the Command Center works cleanly for any user who clones
- * the repo — no hardcoded paths, no PII, no Saeed-specific references, and all
- * features degrade gracefully when external services aren't available.
+ * the repo — no hardcoded paths, no PII, no developer-specific references, and
+ * all features degrade gracefully when external services aren't available.
  *
  * Run: npx vitest run tests/new-user-safety.test.ts
  */
 import { describe, it, expect } from "vitest";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 const ROOT = path.resolve(__dirname, "..");
+
+/** Escape a string for safe literal use inside a RegExp. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /** Recursively get all .ts/.tsx files in a directory, excluding node_modules/dist */
 function getSourceFiles(dir: string): string[] {
@@ -33,13 +39,30 @@ function getSourceFiles(dir: string): string[] {
 
 describe("No hardcoded user-specific paths", () => {
   const sourceFiles = getSourceFiles(ROOT);
-  const BANNED_PATTERNS = [
-    { pattern: /C:[/\\]Users[/\\]zwin0/gi, label: "Hardcoded path C:/Users/zwin0" },
-    { pattern: /C--Users-zwin0/g, label: "Hardcoded encoded project key C--Users-zwin0" },
-    { pattern: /\/Users\/hi\//g, label: "Hardcoded Mac Mini path /Users/hi/" },
+
+  // Derive the current machine's home-directory name at runtime rather than
+  // hardcoding a maintainer username in source — the literal itself would be a
+  // PII leak on this public repo. Use the home-dir basename (the token that
+  // actually appears in encoded project keys and absolute paths), NOT
+  // os.userInfo().username, which can differ from the folder name. The
+  // pre-commit hook runs as the committing user, so this catches that user's
+  // own home-dir paths in any form before they reach a commit.
+  let homeBase = "";
+  try { homeBase = path.basename(os.homedir()); } catch { /* ignore */ }
+
+  const BANNED_PATTERNS: { pattern: RegExp; label: string }[] = [
     { pattern: /100\.67\.236\.104/g, label: "Hardcoded Tailscale IP" },
-    { pattern: /sorlen008@gmail/g, label: "Hardcoded email address" },
+    { pattern: /@gmail\.com/gi, label: "Hardcoded personal email (@gmail.com)" },
   ];
+  if (homeBase) {
+    const u = escapeRegExp(homeBase);
+    BANNED_PATTERNS.push(
+      { pattern: new RegExp(`C:[/\\\\]Users[/\\\\]${u}`, "gi"), label: "Hardcoded Windows home path (C:/Users/<home>)" },
+      { pattern: new RegExp(`C--Users-${u}`, "gi"), label: "Hardcoded encoded project key (C--Users-<home>)" },
+      { pattern: new RegExp(`/Users/${u}/`, "g"), label: "Hardcoded macOS home path (/Users/<home>/)" },
+      { pattern: new RegExp(`/home/${u}/`, "g"), label: "Hardcoded Linux home path (/home/<home>/)" },
+    );
+  }
 
   // Whitelist: files where these patterns are acceptable (test files, configs)
   const WHITELIST = [
@@ -153,7 +176,9 @@ describe("Voice delegation requires env var config", () => {
     const content = fs.readFileSync(path.join(ROOT, "server/scanner/session-delegation.ts"), "utf-8");
     expect(content).toContain("VOICE_CALLER_SCRIPT");
     expect(content).toContain("VOICE_PHONE");
-    expect(content).not.toContain("C:/Users/zwin0");
+    const home = os.homedir();
+    expect(content).not.toContain(home);
+    expect(content).not.toContain(home.replace(/\\/g, "/"));
     expect(content).not.toContain("+971");
   });
 });

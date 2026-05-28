@@ -17,7 +17,7 @@ Express.js backend + React frontend (TypeScript), served from a single process. 
 
 **CRITICAL — Follow these rules for ALL changes:**
 
-1. **No hardcoded paths.** Never use absolute paths like `C:/Users/zwin0/...` or `/Users/hi/...`. Use `os.homedir()`, env vars, or relative paths.
+1. **No hardcoded paths.** Never use absolute paths like `C:/Users/<username>/...` or `/Users/<username>/...`. Use `os.homedir()`, env vars, or relative paths.
 
 2. **No PII in source code.** Never hardcode phone numbers, email addresses, IP addresses, or personal names. Use env vars for user-specific config.
 
