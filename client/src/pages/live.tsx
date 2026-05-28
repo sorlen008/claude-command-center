@@ -950,7 +950,10 @@ function ActiveSessionCard({
                 <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/20">BYPASS</Badge>
               )}
               {session.permissionMode === "auto-accept" && (
-                <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">AUTO</Badge>
+                <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20" title="Auto-accept: edits are approved automatically (bash still prompts)">AUTO</Badge>
+              )}
+              {session.permissionMode === "plan" && (
+                <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20" title="Plan mode: Claude researches and proposes a plan without making changes">PLAN</Badge>
               )}
               <div className="ml-auto flex-shrink-0 flex items-center gap-0.5">
                 {editingTitle ? (

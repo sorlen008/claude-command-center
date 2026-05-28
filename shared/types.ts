@@ -369,7 +369,7 @@ export interface ActiveSession {
   sizeBytes?: number;
   costEstimate?: number;  // USD
   status?: "thinking" | "waiting" | "idle" | "stale";
-  permissionMode?: "default" | "auto-accept" | "bypass";
+  permissionMode?: "default" | "auto-accept" | "bypass" | "plan";
   gitBranch?: string;
   isPinned?: boolean;
   hasHistory?: boolean;  // true if a matching JSONL session file exists

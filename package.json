@@ -1,6 +1,6 @@
 {
   "name": "claude-command-center",
-  "version": "2.6.12",
+  "version": "2.6.13",
   "description": "Dashboard for visualizing and managing your Claude Code ecosystem",
   "license": "MIT",
   "type": "module",

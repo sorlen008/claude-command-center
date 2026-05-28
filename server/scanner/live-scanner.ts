@@ -103,6 +103,37 @@ function readTailLines(filePath: string, chunkSize = 65536): string[] {
   }
 }
 
+/** Read the head of a JSONL file (forward order). Cheap — used to find the
+ *  per-session permission mode, which is written near the session start. */
+function readHeadLines(filePath: string, chunkSize = 32768): string[] {
+  try {
+    const stat = fs.statSync(filePath);
+    const readSize = Math.min(chunkSize, stat.size);
+    const buf = Buffer.alloc(readSize);
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(filePath, "r");
+      fs.readSync(fd, buf, 0, readSize, 0);
+    } finally {
+      if (fd !== null) try { fs.closeSync(fd); } catch {}
+    }
+    return buf.toString("utf-8").split("\n");
+  } catch {
+    return [];
+  }
+}
+
+/** Map a raw Claude Code permission-mode value to the badge variant. */
+function mapPermissionMode(raw: string | undefined): ActiveSession["permissionMode"] | undefined {
+  switch (raw) {
+    case "bypassPermissions": return "bypass";
+    case "acceptEdits": return "auto-accept";
+    case "plan": return "plan";
+    case "default": return "default";
+    default: return undefined;
+  }
+}
+
 function getModelPricing(model: string) {
   return getModelPricingShared(model);
 }
@@ -113,6 +144,7 @@ interface SessionDetails {
   messageCount: number;
   sizeBytes: number;
   costEstimate: number;
+  permissionMode?: ActiveSession["permissionMode"];
 }
 
 /** Extract all session details in a single pass over the tail of the JSONL */
@@ -226,12 +258,29 @@ function getSessionDetails(filePath: string): SessionDetails {
   const blendedInputRate = totalInputTokens > 0 ? cacheReadRate : 0; // Most input is cache reads
   const costEstimate = (totalInputTokens / 1_000_000 * blendedInputRate) + (totalOutputTokens / 1_000_000 * pricing.output);
 
+  // Per-session permission mode from the last "permission-mode" record. It's
+  // usually written at session start (head), but can be toggled mid-session
+  // (tail), so prefer the latest. bigLines is reverse-ordered → first match is
+  // the most recent; fall back to the head if it's outside the tail window.
+  let permRaw: string | undefined;
+  for (const line of bigLines) {
+    if (line.indexOf('"permission-mode"') === -1) continue;
+    try { const r = JSON.parse(line.trim()); if (r.type === "permission-mode" && r.permissionMode) { permRaw = r.permissionMode; break; } } catch {}
+  }
+  if (!permRaw) {
+    for (const line of readHeadLines(filePath)) {
+      if (line.indexOf('"permission-mode"') === -1) continue;
+      try { const r = JSON.parse(line.trim()); if (r.type === "permission-mode" && r.permissionMode) permRaw = r.permissionMode; } catch {}
+    }
+  }
+
   return {
     contextUsage,
     lastMessage,
     messageCount,
     sizeBytes,
     costEstimate: Math.round(costEstimate * 1000) / 1000, // 3 decimal places
+    permissionMode: mapPermissionMode(permRaw),
   };
 }
 
@@ -312,15 +361,15 @@ export function getLiveData(): LiveData {
       active.messageCount = details.messageCount;
       active.sizeBytes = details.sizeBytes;
       active.costEstimate = details.costEstimate;
+      // 2e. Permission mode — per-session from the JSONL, global as fallback.
+      active.permissionMode = details.permissionMode ?? permissionMode;
 
       // 2d. Detect session status from JSONL mtime
       active.status = getSessionStatus(sessionFile, nowMs);
     } else {
       active.status = "stale";
+      active.permissionMode = permissionMode;
     }
-
-    // 2e. Permission mode (global, same for all sessions)
-    active.permissionMode = permissionMode;
 
     // 2f. Git branch from cwd
     active.gitBranch = getGitBranch(active.cwd);
@@ -375,11 +424,12 @@ export function getLiveData(): LiveData {
               tempSession.messageCount = details.messageCount;
               tempSession.sizeBytes = details.sizeBytes;
               tempSession.costEstimate = details.costEstimate;
+              tempSession.permissionMode = details.permissionMode ?? permissionMode;
               tempSession.status = getSessionStatus(sessionFile, nowMs);
             } else {
               tempSession.status = "stale";
+              tempSession.permissionMode = permissionMode;
             }
-            tempSession.permissionMode = permissionMode;
             tempSession.gitBranch = getGitBranch(tempSession.cwd);
             tempSession.isPinned = pinnedSet.has(sessionId);
             activeSessions.push(tempSession);
