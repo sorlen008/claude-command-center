@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ListSkeleton } from "@/components/skeleton";
 import {
@@ -15,7 +16,10 @@ import {
   Bot,
   Wrench,
   Loader2,
+  Terminal,
+  Check,
 } from "lucide-react";
+import { useOpenSession } from "@/hooks/use-sessions";
 import { relativeTime, shortModel } from "@/lib/utils";
 import type { SessionData, SessionStats } from "@shared/types";
 
@@ -194,6 +198,15 @@ function SessionRow({
   matchCount?: number;
 }) {
   const project = lastPathSegment(session.projectKey);
+  const openSession = useOpenSession();
+  const [openPhase, setOpenPhase] = useState<"idle" | "opening" | "done">("idle");
+  const handleOpenTerminal = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenPhase("opening");
+    openSession.mutate(session.id, {
+      onSettled: () => { setOpenPhase("done"); setTimeout(() => setOpenPhase("idle"), 2000); },
+    });
+  };
 
   return (
     <Card
@@ -251,6 +264,23 @@ function SessionRow({
             <span className="text-[11px] text-muted-foreground/50 font-mono">
               {formatDate(session.lastTs)}
             </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5"
+              disabled={openPhase === "opening"}
+              onClick={handleOpenTerminal}
+              title={`Open a terminal in ${session.cwd || "the session's directory"} and resume this session`}
+            >
+              {openPhase === "opening" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
+              ) : openPhase === "done" ? (
+                <Check className="h-3.5 w-3.5 text-green-400" />
+              ) : (
+                <Terminal className="h-3.5 w-3.5 text-green-400" />
+              )}
+              {openPhase === "opening" ? "Opening…" : openPhase === "done" ? "Opened" : "Open"}
+            </Button>
           </div>
         </div>
 
