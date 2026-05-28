@@ -21,6 +21,7 @@ interface ActiveSessionLite {
   contextUsage?: {
     tokensUsed: number;
     maxTokens: number;
+    usableTokens: number;
     percentage: number;
     model?: string;
   };
@@ -205,7 +206,7 @@ export function PlanUsagePopoverContent({ onNavigate }: { onNavigate: (path: str
             }
             value={
               <>
-                {fmtTokens(activeSession.contextUsage.tokensUsed)} / {fmtTokens(activeSession.contextUsage.maxTokens)}
+                {fmtTokens(activeSession.contextUsage.tokensUsed)} / {fmtTokens(activeSession.contextUsage.usableTokens)}
                 <span className="text-muted-foreground/60"> ({activeSession.contextUsage.percentage}%)</span>
               </>
             }

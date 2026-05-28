@@ -360,8 +360,9 @@ export interface ActiveSession {
   projectKey?: string;
   contextUsage?: {
     tokensUsed: number;
-    maxTokens: number;
-    percentage: number;
+    maxTokens: number;       // full context window (e.g. 1,000,000)
+    usableTokens: number;    // budget Claude Code's terminal % measures against (window minus output + auto-compact reserve)
+    percentage: number;      // tokensUsed / usableTokens — matches the terminal meter
     model?: string;
   };
   messageCount?: number;

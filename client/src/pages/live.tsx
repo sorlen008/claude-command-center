@@ -908,7 +908,7 @@ function ActiveSessionCard({
 
             {/* Context usage */}
             {session.contextUsage && (
-              <div className="mt-2 flex items-center gap-2" title={`${session.contextUsage.tokensUsed.toLocaleString()} / ${session.contextUsage.maxTokens.toLocaleString()} tokens (${session.contextUsage.percentage}%)`}>
+              <div className="mt-2 flex items-center gap-2" title={`${session.contextUsage.tokensUsed.toLocaleString()} / ${session.contextUsage.usableTokens.toLocaleString()} usable tokens (${session.contextUsage.percentage}%) — ${session.contextUsage.maxTokens.toLocaleString()}-token window, ~21% reserved for output + auto-compact (matches the terminal meter)`}>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
@@ -937,7 +937,7 @@ function ActiveSessionCard({
                   {session.contextUsage.percentage}%
                 </span>
                 <span className="text-[9px] text-muted-foreground/40 shrink-0">
-                  {Math.round(session.contextUsage.tokensUsed / 1000)}k / {Math.round(session.contextUsage.maxTokens / 1000)}k
+                  {Math.round(session.contextUsage.tokensUsed / 1000)}k / {Math.round(session.contextUsage.usableTokens / 1000)}k
                 </span>
               </div>
             )}

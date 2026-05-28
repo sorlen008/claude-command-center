@@ -61,7 +61,7 @@ function getGitBranch(cwd: string): string | undefined {
   }
 }
 
-import { getPricing as getModelPricingShared, getMaxTokens } from "./pricing";
+import { getPricing as getModelPricingShared, getMaxTokens, getUsableContext } from "./pricing";
 
 /** Find the session JSONL file across all project dirs.
  *  Claude Code creates a new JSONL file (with a new session ID) after context
@@ -211,7 +211,11 @@ function getSessionDetails(filePath: string): SessionDetails {
     if (maxCtxTokens > 0) storage.recordObservedContext(family, maxCtxTokens);
     const effectiveObserved = Math.max(maxCtxTokens, storage.getObservedMaxContext(family));
     const maxTokens = getMaxTokens(model, effectiveObserved);
-    contextUsage = { tokensUsed, maxTokens, percentage: Math.round((tokensUsed / maxTokens) * 100), model };
+    // Measure against the usable budget (not the raw window) so the bar matches
+    // Claude Code's terminal meter, which reserves space for output + auto-compact.
+    const usableTokens = getUsableContext(model, effectiveObserved);
+    const percentage = Math.min(100, Math.round((tokensUsed / usableTokens) * 100));
+    contextUsage = { tokensUsed, maxTokens, usableTokens, percentage, model };
   }
 
   // Estimate cost (note: we only have partial data from the tail chunk)

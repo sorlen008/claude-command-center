@@ -73,3 +73,25 @@ export function getMaxTokens(model: string, observedTokens = 0): number {
   if (/opus/i.test(model) && observedTokens > 200_000) return 1_000_000;
   return 200_000;
 }
+
+/**
+ * Fraction of the raw context window that Claude Code's terminal meter treats as
+ * usable. It reserves the remainder for model output and the auto-compact buffer,
+ * so the terminal % is measured against this budget, not the full window.
+ *
+ * Empirically calibrated against two observed Claude Code terminal readings:
+ *   - 1M Opus beta: 276,718 tokens shown as ~35% → ~790K usable (≈0.79 × 1M).
+ *   - 200K window:  162,157 tokens shown as ~81% → the FULL 200K (no reserve).
+ * So the reserve applies to the 1M beta (which holds back more headroom for
+ * output + auto-compaction), while the standard 200K window is measured against
+ * the whole window. Derived from observed behaviour / third-party analysis, NOT
+ * official docs — may drift across Claude Code versions; a single tunable knob.
+ */
+export const USABLE_CONTEXT_FRACTION = 0.79;
+
+/** Usable context budget the terminal % is measured against (see USABLE_CONTEXT_FRACTION). */
+export function getUsableContext(model: string, observedTokens = 0): number {
+  const window = getMaxTokens(model, observedTokens);
+  // Only the 1M beta reserves a large share; the 200K window uses the full window.
+  return window >= 1_000_000 ? Math.round(window * USABLE_CONTEXT_FRACTION) : window;
+}

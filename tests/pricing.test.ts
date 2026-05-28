@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getMaxTokens, getPricing } from "../server/scanner/pricing";
+import { getMaxTokens, getPricing, getUsableContext } from "../server/scanner/pricing";
 
 describe("getPricing — 2026-04 rate update", () => {
   it("Opus 4.6 uses $5/$25 current rates (was $15/$75)", () => {
@@ -81,5 +81,24 @@ describe("getMaxTokens", () => {
     const tokens = 162_157;
     const max = getMaxTokens("claude-opus-4-6", tokens);
     expect(Math.round((tokens / max) * 100)).toBe(81);
+  });
+});
+
+describe("getUsableContext (terminal-meter parity)", () => {
+  it("200K window is measured against the full window (no reserve)", () => {
+    expect(getUsableContext("claude-sonnet-4-6")).toBe(200_000);
+    expect(getUsableContext("claude-opus-4-6", 162_157)).toBe(200_000);
+  });
+
+  it("1M Opus beta reserves ~21% (≈790K usable)", () => {
+    expect(getUsableContext("claude-opus-4-6", 500_000)).toBe(790_000);
+  });
+
+  // Both observed CLI data points must reproduce:
+  it("matches the terminal: 162,157/200K → 81%, 276,718/1M-beta → 35%", () => {
+    const p200 = Math.round((162_157 / getUsableContext("claude-opus-4-6", 162_157)) * 100);
+    expect(p200).toBe(81);
+    const p1m = Math.round((276_718 / getUsableContext("claude-opus-4-6", 276_718)) * 100);
+    expect(p1m).toBe(35);
   });
 });
