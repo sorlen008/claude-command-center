@@ -773,7 +773,9 @@ export default function Live() {
             <p className="text-muted-foreground">
               This stops the running Claude process
               {closeTarget ? <> (<span className="font-mono text-foreground">PID {closeTarget.pid}</span>)</> : null}
-              {closeTarget?.kind === "bg" && closeTarget.jobName ? <> — the background job “{closeTarget.jobName}”</> : null}.
+              {closeTarget?.kind === "bg"
+                ? <> — the background job{closeTarget.jobName ? <> “{closeTarget.jobName}”</> : null} (no terminal window)</>
+                : <> and <span className="text-foreground font-medium">closes its terminal window</span></>}.
               The conversation transcript is <span className="text-foreground font-medium">kept</span> — it stays in Sessions/Messages and can be resumed later.
             </p>
             {closeError && (
@@ -1010,7 +1012,7 @@ function ActiveSessionCard({
                   variant="ghost"
                   className="h-7 w-7 p-0 group/end"
                   onClick={(e) => { e.stopPropagation(); onClose(); }}
-                  title="End session — stops the running process. Transcript is kept (resumable)."
+                  title="End session — stops the process and closes its terminal window. Transcript is kept (resumable)."
                   aria-label="End session"
                 >
                   <Power className="h-3.5 w-3.5 text-muted-foreground group-hover/end:text-red-400" />

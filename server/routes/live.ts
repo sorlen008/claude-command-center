@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -112,11 +112,25 @@ router.post("/api/live/compact", (req: Request, res: Response) => {
   });
 });
 
+// Shells we're willing to kill to close an interactive session's terminal
+// window/tab. We deliberately do NOT kill terminal-host apps (WindowsTerminal,
+// conhost, Terminal, iTerm2, gnome-terminal) — those host other tabs/windows.
+const SHELL_NAMES = new Set([
+  "cmd", "powershell", "pwsh", "bash", "wsl", "sh", "zsh", "fish", "dash", "ash", "nu",
+  "cmd.exe", "powershell.exe", "pwsh.exe", "bash.exe", "wsl.exe",
+]);
+
 /**
- * POST /api/live/close — End (kill) the running Claude process for a session.
- * Stops the live session but KEEPS its transcript on disk (still browsable and
- * resumable). Cross-platform; the PID is resolved server-side from the active-
- * session list, never taken from the client, so arbitrary PIDs can't be killed.
+ * POST /api/live/close — End a session AND close its terminal window.
+ *
+ * Kills the running Claude process; for an interactive session it kills the
+ * PARENT SHELL (cmd/pwsh/bash/zsh/…) instead, because a terminal tab/window
+ * closes when its shell exits. It never kills the terminal-host app itself
+ * (that would close all your other tabs). Background (headless) sessions have
+ * no window, so only the process is killed. Cross-platform (best-effort: some
+ * terminals keep the window per user preference). The transcript is KEPT —
+ * still browsable and resumable. PID is resolved server-side, never trusted
+ * from the client.
  */
 router.post("/api/live/close", (req: Request, res: Response) => {
   const { sessionId } = req.body as { sessionId?: string };
@@ -129,26 +143,54 @@ router.post("/api/live/close", (req: Request, res: Response) => {
     return res.status(404).json({ success: false, message: "Session not found in active sessions" });
   }
   const pid = session.pid;
+  const isBg = session.kind === "bg";  // headless — no window to close
 
   if (process.platform === "win32") {
-    // /T kills the process tree, /F forces.
-    const child = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: ["ignore", "pipe", "pipe"], shell: false });
-    let err = "";
+    // For interactive sessions, walk one level up: if Claude's parent is a
+    // shell, kill that shell's tree (closes the tab); otherwise kill Claude's
+    // tree. taskkill /T only kills descendants, so the terminal host (an
+    // ancestor) is never touched.
+    const psLines = isBg
+      ? [`taskkill /PID ${pid} /T /F | Out-Null; Write-Output "proc:${pid}"`]
+      : [
+          `$cpid=${pid}`,
+          `$shells='cmd','powershell','pwsh','bash','wsl','sh','zsh','fish'`,
+          `$par=try{(Get-CimInstance Win32_Process -Filter "ProcessId=$cpid" -EA Stop).ParentProcessId}catch{0}`,
+          `$pname=try{(Get-Process -Id $par -EA Stop).ProcessName.ToLower()}catch{''}`,
+          `if($par -gt 0 -and ($shells -contains $pname)){ taskkill /PID $par /T /F | Out-Null; Write-Output "shell:$par" }`,
+          `else { taskkill /PID $cpid /T /F | Out-Null; Write-Output "proc:$cpid" }`,
+        ];
+    const child = spawn("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psLines.join("; ")], { stdio: ["ignore", "pipe", "pipe"], shell: false });
+    let out = ""; let err = "";
+    child.stdout?.on("data", (d: Buffer) => { out += d.toString(); });
     child.stderr?.on("data", (d: Buffer) => { err += d.toString(); });
     const t = setTimeout(() => { try { child.kill(); } catch {} }, 8000);
-    child.on("close", (code) => {
+    child.on("close", () => {
       clearTimeout(t);
-      if (code === 0) res.json({ success: true, message: `Ended session (pid ${pid}). Transcript kept.`, pid });
-      else res.json({ success: false, message: err.trim() || `taskkill exited ${code}`, pid });
+      const closedWindow = out.includes("shell:");
+      res.json({ success: true, pid, closedWindow, message: `Ended session (pid ${pid})${closedWindow ? " and closed its window" : ""}. Transcript kept.`, detail: (out + err).trim().slice(0, 200) });
     });
     child.on("error", (e) => { clearTimeout(t); res.status(500).json({ success: false, message: e.message, pid }); });
     return;
   }
 
-  // macOS / Linux
+  // macOS / Linux — find the parent shell via ps; kill it (closes the
+  // tab/window) plus the Claude process, else just the Claude process.
   try {
-    process.kill(pid, "SIGTERM");
-    res.json({ success: true, message: `Ended session (pid ${pid}). Transcript kept.`, pid });
+    let target = pid;
+    if (!isBg) {
+      const ppidStr = spawnSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8" }).stdout?.trim() || "";
+      const ppid = parseInt(ppidStr, 10);
+      if (ppid && ppid > 1) {
+        const comm = (spawnSync("ps", ["-o", "comm=", "-p", String(ppid)], { encoding: "utf8" }).stdout || "").trim();
+        const base = (comm.split("/").pop() || "").replace(/^-/, "");
+        if (SHELL_NAMES.has(base)) target = ppid;
+      }
+    }
+    if (target !== pid) { try { process.kill(pid, "SIGKILL"); } catch {} }  // ensure Claude dies too
+    process.kill(target, target !== pid ? "SIGKILL" : "SIGTERM");
+    const closedWindow = target !== pid;
+    res.json({ success: true, pid, closedWindow, message: `Ended session (pid ${pid})${closedWindow ? " and closed its window" : ""}. Transcript kept.` });
   } catch (e) {
     res.status(500).json({ success: false, message: (e as Error).message, pid });
   }
