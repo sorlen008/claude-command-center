@@ -116,6 +116,15 @@ interface SessionDetails {
 }
 
 /** Extract all session details in a single pass over the tail of the JSONL */
+/** Collapse a model id to its family for context-window tracking. */
+function modelFamily(model: string): string {
+  const m = (model || "").toLowerCase();
+  if (m.includes("opus")) return "opus";
+  if (m.includes("sonnet")) return "sonnet";
+  if (m.includes("haiku")) return "haiku";
+  return m || "unknown";
+}
+
 function getSessionDetails(filePath: string): SessionDetails {
   let contextUsage: ActiveSession["contextUsage"];
   let lastMessage: string | undefined;
@@ -123,24 +132,26 @@ function getSessionDetails(filePath: string): SessionDetails {
   let totalOutputTokens = 0;
   let model = "";
   let sizeBytes = 0;
+  let lastCtxTokens = 0;   // current context = last assistant record's tokens
+  let lastCtxFound = false;
+  let maxCtxTokens = 0;    // peak context observed in this file
 
   try {
     sizeBytes = fs.statSync(filePath).size;
   } catch {}
 
-  // Read the tail for context usage (last assistant message)
+  // Read the tail for the *current* context size (last assistant message).
   const tailLines = readTailLines(filePath, 65536);
   for (const line of tailLines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
       const record = JSON.parse(trimmed);
-      if (!contextUsage && record.type === "assistant" && record.message?.usage) {
+      if (!lastCtxFound && record.type === "assistant" && record.message?.usage) {
         const u = record.message.usage;
         model = record.message.model || "";
-        const tokensUsed = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-        const maxTokens = getMaxTokens(model, tokensUsed);
-        contextUsage = { tokensUsed, maxTokens, percentage: Math.round((tokensUsed / maxTokens) * 100), model };
+        lastCtxTokens = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+        lastCtxFound = true;
       }
     } catch {}
   }
@@ -161,7 +172,9 @@ function getSessionDetails(filePath: string): SessionDetails {
         messageCount++;
         const u = record.message?.usage;
         if (u) {
-          totalInputTokens += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+          const ctx = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+          if (ctx > maxCtxTokens) maxCtxTokens = ctx;
+          totalInputTokens += ctx;
           totalOutputTokens += u.output_tokens || 0;
           if (!model && record.message?.model) model = record.message.model;
         }
@@ -184,6 +197,21 @@ function getSessionDetails(filePath: string): SessionDetails {
         }
       }
     } catch {}
+  }
+
+  // Build context usage with a proof-based window. A 200K-window session can
+  // never exceed 200K (it auto-compacts first), so any observation >200K — in
+  // this file's peak OR persisted historically for the family — proves the 1M
+  // beta is in effect. Feeding that max into getMaxTokens fixes the case where a
+  // 1M session currently sits below 200K and would otherwise read against 200K
+  // (e.g. 198K showing 99% instead of ~20%).
+  if (lastCtxFound || maxCtxTokens > 0) {
+    const tokensUsed = lastCtxFound ? lastCtxTokens : maxCtxTokens;
+    const family = modelFamily(model);
+    if (maxCtxTokens > 0) storage.recordObservedContext(family, maxCtxTokens);
+    const effectiveObserved = Math.max(maxCtxTokens, storage.getObservedMaxContext(family));
+    const maxTokens = getMaxTokens(model, effectiveObserved);
+    contextUsage = { tokensUsed, maxTokens, percentage: Math.round((tokensUsed / maxTokens) * 100), model };
   }
 
   // Estimate cost (note: we only have partial data from the tail chunk)

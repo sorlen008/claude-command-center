@@ -35,6 +35,14 @@ export interface DBData {
   pinnedSessions: string[];
   decisions: Decision[];
   markdownMeta: Record<string, { locked?: boolean; pinned?: boolean }>;
+  /**
+   * Max context tokens ever observed per model family (e.g. "opus"). A
+   * 200K-window session can never exceed 200K (it auto-compacts first), so any
+   * value >200K here is proof that family runs the 1M-context beta. Used by the
+   * live context bar to pick the right window even for sessions currently below
+   * 200K. Written only when a new peak is seen.
+   */
+  observedMaxContext?: Record<string, number>;
 }
 
 export const defaultAppSettings: AppSettings = {
@@ -74,6 +82,7 @@ function defaultData(): DBData {
     pinnedSessions: [],
     decisions: [],
     markdownMeta: {},
+    observedMaxContext: {},
   };
 }
 

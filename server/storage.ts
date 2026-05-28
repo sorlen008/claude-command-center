@@ -127,6 +127,24 @@ export class Storage {
     save();
   }
 
+  // Observed context windows (proof-based 1M detection)
+  /** Max context tokens ever observed for a model family (0 if never seen). */
+  getObservedMaxContext(family: string): number {
+    return getDB().observedMaxContext?.[family] ?? 0;
+  }
+
+  /** Record a new context-token peak for a family. No-op (no write) unless it
+   *  exceeds the stored value, so this is cheap to call on every live scan. */
+  recordObservedContext(family: string, tokens: number): void {
+    if (!family || !(tokens > 0)) return;
+    const db = getDB();
+    if (!db.observedMaxContext) db.observedMaxContext = {};
+    if (tokens > (db.observedMaxContext[family] ?? 0)) {
+      db.observedMaxContext[family] = tokens;
+      save();
+    }
+  }
+
   // App Settings
   getAppSettings(): AppSettings {
     return getDB().appSettings;
