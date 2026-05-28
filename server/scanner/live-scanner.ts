@@ -61,7 +61,7 @@ function getGitBranch(cwd: string): string | undefined {
   }
 }
 
-import { getPricing as getModelPricingShared, getMaxTokens, getUsableContext } from "./pricing";
+import { getPricing as getModelPricingShared, getMaxTokens, getUsableContext, computeCost } from "./pricing";
 
 /** Find the session JSONL file across all project dirs.
  *  Claude Code creates a new JSONL file (with a new session ID) after context
@@ -148,6 +148,50 @@ interface SessionDetails {
 }
 
 /** Extract all session details in a single pass over the tail of the JSONL */
+/**
+ * Accurate per-session cost + message count over the WHOLE transcript, using
+ * per-token-type rates (input/output/cache-read/cache-creation) — not the old
+ * blended estimate over just the tail. Cached by file mtime+size so unchanged
+ * sessions aren't re-read on every 3s live refresh; only growing (active)
+ * sessions recompute.
+ */
+const costCache = new Map<string, { mtimeMs: number; size: number; cost: number; messageCount: number }>();
+function computeSessionCostAndCount(filePath: string): { cost: number; messageCount: number } {
+  try {
+    const st = fs.statSync(filePath);
+    const hit = costCache.get(filePath);
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+      return { cost: hit.cost, messageCount: hit.messageCount };
+    }
+    const content = fs.readFileSync(filePath, "utf-8");
+    let input = 0, output = 0, cc = 0, cr = 0, model = "", messageCount = 0;
+    for (const line of content.split("\n")) {
+      if (!line) continue;
+      try {
+        const r = JSON.parse(line);
+        if (r.type !== "assistant") continue;
+        messageCount++;
+        const u = r.message?.usage;
+        if (u) {
+          input += u.input_tokens || 0;
+          output += u.output_tokens || 0;
+          cc += u.cache_creation_input_tokens || 0;
+          cr += u.cache_read_input_tokens || 0;
+          if (!model && r.message?.model) model = r.message.model;
+        }
+      } catch {}
+    }
+    const cost = Math.round(computeCost(getModelPricingShared(model), input, output, cr, cc) * 100) / 100;
+    const result = { cost, messageCount };
+    costCache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, ...result });
+    // Keep the cache from growing unbounded across many sessions.
+    if (costCache.size > 500) { const k = costCache.keys().next().value; if (k) costCache.delete(k); }
+    return result;
+  } catch {
+    return { cost: 0, messageCount: 0 };
+  }
+}
+
 /** Collapse a model id to its family for context-window tracking. */
 function modelFamily(model: string): string {
   const m = (model || "").toLowerCase();
@@ -250,13 +294,10 @@ function getSessionDetails(filePath: string): SessionDetails {
     contextUsage = { tokensUsed, maxTokens, usableTokens, percentage, model };
   }
 
-  // Estimate cost (note: we only have partial data from the tail chunk)
-  // totalInputTokens here includes input + cache_create + cache_read from the tail chunk.
-  // Most tokens are cache reads (90% cheaper). Use a blended rate.
-  const pricing = getModelPricing(model);
-  const cacheReadRate = pricing.input * 0.1;
-  const blendedInputRate = totalInputTokens > 0 ? cacheReadRate : 0; // Most input is cache reads
-  const costEstimate = (totalInputTokens / 1_000_000 * blendedInputRate) + (totalOutputTokens / 1_000_000 * pricing.output);
+  // Accurate cost + message count over the whole transcript with per-type rates
+  // (mtime-cached). Replaces the old tail-only blended estimate, which both
+  // undercounted large sessions and mis-blended cache-creation vs cache-read.
+  const { cost: costEstimate, messageCount: accurateMessageCount } = computeSessionCostAndCount(filePath);
 
   // Per-session permission mode from the last "permission-mode" record. It's
   // usually written at session start (head), but can be toggled mid-session
@@ -277,9 +318,9 @@ function getSessionDetails(filePath: string): SessionDetails {
   return {
     contextUsage,
     lastMessage,
-    messageCount,
+    messageCount: accurateMessageCount || messageCount,
     sizeBytes,
-    costEstimate: Math.round(costEstimate * 1000) / 1000, // 3 decimal places
+    costEstimate,
     permissionMode: mapPermissionMode(permRaw),
   };
 }

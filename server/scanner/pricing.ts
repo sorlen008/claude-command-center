@@ -15,8 +15,10 @@ export interface ModelPricing {
 
 // Regex-matched in order. First match wins.
 const MODEL_RATE_TABLE: Array<{ match: RegExp; pricing: ModelPricing; note: string }> = [
-  // Opus 4.5 / 4.6 — current pricing (reduced from 4.0/4.1)
-  { match: /opus-4-[56]/i, pricing: { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 }, note: "opus-4.5/4.6" },
+  // Opus 4.5 and up (4.5, 4.6, 4.7, 4.8, … incl. two-digit minors) — current
+  // reduced pricing. MUST precede the 4.0/4.1 legacy row, whose \b would
+  // otherwise also match "opus-4-7"/"opus-4-8" and overcharge them 3×.
+  { match: /opus-4-(?:[5-9]|[1-9]\d)/i, pricing: { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 }, note: "opus-4.5+" },
   // Opus 4.0 / 4.1 — legacy, original Claude 4 pricing
   { match: /opus-4(?:-[01])?\b/i, pricing: { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 }, note: "opus-4.0/4.1 legacy" },
   // Opus 3 — legacy

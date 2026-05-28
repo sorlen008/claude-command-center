@@ -16,6 +16,18 @@ describe("getPricing — 2026-04 rate update", () => {
     expect(p.output).toBe(25);
   });
 
+  // Regression: opus-4-7/4-8 matched the 4.0/4.1 legacy "\b" pattern and were
+  // overcharged 3× ($15 vs $5). They must use the current reduced rates.
+  it("Opus 4.7 / 4.8 use current reduced rates (not legacy $15)", () => {
+    for (const m of ["claude-opus-4-7", "claude-opus-4-8", "claude-opus-4-9", "claude-opus-4-10"]) {
+      const p = getPricing(m);
+      expect(p.input, m).toBe(5);
+      expect(p.output, m).toBe(25);
+      expect(p.cacheRead, m).toBe(0.5);
+      expect(p.cacheCreation, m).toBe(6.25);
+    }
+  });
+
   it("Opus 4 / 4.1 keeps legacy $15/$75 rates for historical accuracy", () => {
     expect(getPricing("claude-opus-4").input).toBe(15);
     expect(getPricing("claude-opus-4-0").input).toBe(15);
