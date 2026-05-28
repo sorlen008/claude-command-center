@@ -27,6 +27,10 @@ npm-debug.log*
 # Local data
 *.tmp
 
+# Local operational scripts (machine-specific paths, not for distribution)
+start-server.ps1
+watchdog.ps1
+
 # Screenshots — always contain live user data, never commit
 docs/screenshots/
 docs/social-preview.png

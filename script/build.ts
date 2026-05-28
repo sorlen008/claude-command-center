@@ -29,8 +29,13 @@ async function buildAll() {
     bundle: true,
     format: "cjs",
     outfile: "dist/index.cjs",
-    banner: { js: "#!/usr/bin/env node" },
-    define: {},
+    // CJS bundle needs an import.meta.url shim: esbuild lowers ESM source to
+    // CJS but leaves import.meta.url undefined, which crashes fileURLToPath()
+    // on Node 24. __filename is valid in the CJS output.
+    banner: {
+      js: "#!/usr/bin/env node\nconst { pathToFileURL: __ccPathToFileURL } = require('node:url');\nvar __ccImportMetaUrl = __ccPathToFileURL(__filename).href;",
+    },
+    define: { "import.meta.url": "__ccImportMetaUrl" },
     minify: true,
     external: [...externals, "./vite"],
     logLevel: "info",
