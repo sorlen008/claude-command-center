@@ -108,7 +108,28 @@ export default function ProjectDetail() {
           <Button variant="ghost" size="icon" aria-label="Back to projects"><ArrowLeft className="h-4 w-4" /></Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold">{project.name}</h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-2xl font-bold">{project.name}</h1>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-7"
+              disabled={termPhase === "opening"}
+              onClick={handleOpenTerminal}
+              title={`Open a terminal in ${project.path}`}
+            >
+              {termPhase === "opening" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
+              ) : termPhase === "done" ? (
+                <Check className="h-3.5 w-3.5 text-green-400" />
+              ) : termPhase === "error" ? (
+                <X className="h-3.5 w-3.5 text-red-400" />
+              ) : (
+                <Terminal className="h-3.5 w-3.5 text-green-400" />
+              )}
+              {termPhase === "opening" ? "Opening…" : termPhase === "done" ? "Opened" : termPhase === "error" ? "Failed" : "Open Terminal"}
+            </Button>
+          </div>
           <p className="text-sm text-muted-foreground font-mono">{pdata.projectKey}</p>
           {pdata.techStack && pdata.techStack.length > 0 && (
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -120,25 +141,6 @@ export default function ProjectDetail() {
             </div>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-auto gap-1.5 self-start"
-          disabled={termPhase === "opening"}
-          onClick={handleOpenTerminal}
-          title={`Open a terminal in ${project.path}`}
-        >
-          {termPhase === "opening" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
-          ) : termPhase === "done" ? (
-            <Check className="h-3.5 w-3.5 text-green-400" />
-          ) : termPhase === "error" ? (
-            <X className="h-3.5 w-3.5 text-red-400" />
-          ) : (
-            <Terminal className="h-3.5 w-3.5 text-green-400" />
-          )}
-          {termPhase === "opening" ? "Opening…" : termPhase === "done" ? "Opened" : termPhase === "error" ? "Failed" : "Open Terminal"}
-        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
