@@ -29,6 +29,8 @@ import {
   Copy,
   Pencil,
   X,
+  Power,
+  MessageSquare,
 } from "lucide-react";
 import {
   Dialog,
@@ -255,6 +257,10 @@ export default function Live() {
   const [compactSending, setCompactSending] = useState(false);
   const [compactSendResult, setCompactSendResult] = useState<"sent" | "failed" | null>(null);
   const [compactDebug, setCompactDebug] = useState<string | null>(null);
+  const [msgTarget, setMsgTarget] = useState<ActiveSession | null>(null);   // full-message dialog
+  const [closeTarget, setCloseTarget] = useState<ActiveSession | null>(null); // end-session confirm
+  const [closing, setClosing] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const tick = useTick(1000);
   const isCompact = new URLSearchParams(window.location.search).get("compact") === "true";
   const prevSessionIdsRef = useRef<Set<string> | null>(null);
@@ -329,6 +335,30 @@ export default function Live() {
       setCompactSending(false);
     }
   }, [compactTarget]);
+
+  const handleConfirmClose = useCallback(async () => {
+    if (!closeTarget) return;
+    setClosing(true);
+    setCloseError(null);
+    try {
+      const res = await fetch("/api/live/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: closeTarget.sessionId }),
+      });
+      const data = await res.json() as { success: boolean; message?: string };
+      if (data.success) {
+        setCloseTarget(null);
+        refetch();
+      } else {
+        setCloseError(data.message || "Failed to end session");
+      }
+    } catch (e) {
+      setCloseError((e as Error).message);
+    } finally {
+      setClosing(false);
+    }
+  }, [closeTarget, refetch]);
 
   // Countdown to next refresh
   const secsSinceUpdate = dataUpdatedAt ? Math.floor((tick - dataUpdatedAt) / 1000) : 0;
@@ -511,7 +541,18 @@ export default function Live() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active sessions — 2 cols */}
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Sessions</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Sessions</h2>
+            {activeSessions.length > 0 && (() => {
+              const bg = activeSessions.filter(s => s.kind === "bg").length;
+              const term = activeSessions.length - bg;
+              return (
+                <span className="text-[11px] text-muted-foreground/70">
+                  {term} terminal{term !== 1 ? "s" : ""}{bg > 0 ? ` · ${bg} background` : ""}
+                </span>
+              );
+            })()}
+          </div>
           {activeSessions.length === 0 ? (
             <div className="rounded-xl border bg-card">
               <EmptyState icon={Monitor} title="No active Claude sessions" description="Sessions will appear here when Claude Code is running" />
@@ -526,6 +567,8 @@ export default function Live() {
                   tick={tick}
                   onCompactClick={() => setCompactTarget(session)}
                   onOpenInSessions={() => setLocation(`/sessions?session=${session.sessionId}`)}
+                  onShowMessage={() => setMsgTarget(session)}
+                  onClose={() => { setCloseError(null); setCloseTarget(session); }}
                   isNew={newSessionIds.has(session.sessionId)}
                   copiedId={copiedId}
                   onCopyResume={handleCopyResume}
@@ -678,6 +721,71 @@ export default function Live() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full message dialog — read the entire Started / Latest message */}
+      <Dialog open={!!msgTarget} onOpenChange={(open) => { if (!open) setMsgTarget(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-cyan-400" />
+              {msgTarget?.customName || msgTarget?.slug || msgTarget?.sessionId.slice(0, 8) + "…"}
+            </DialogTitle>
+            <DialogDescription className="sr-only">Full first and latest message for this session</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto">
+            {msgTarget?.lastMessage && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">Latest message</p>
+                <p className="whitespace-pre-wrap break-words text-foreground/90 bg-muted/30 rounded-lg p-3 border border-border/40">{msgTarget.lastMessage}</p>
+              </div>
+            )}
+            {msgTarget?.firstMessage && msgTarget.firstMessage !== msgTarget.lastMessage && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">Started with</p>
+                <p className="whitespace-pre-wrap break-words text-foreground/80 bg-muted/20 rounded-lg p-3 border border-border/30">{msgTarget.firstMessage}</p>
+              </div>
+            )}
+            {!msgTarget?.lastMessage && !msgTarget?.firstMessage && (
+              <p className="text-muted-foreground">No message text available for this session.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { if (msgTarget) { const id = msgTarget.sessionId; setMsgTarget(null); setLocation(`/sessions?session=${id}`); } }}>
+              Open in Sessions
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* End-session confirmation */}
+      <Dialog open={!!closeTarget} onOpenChange={(open) => { if (!open && !closing) { setCloseTarget(null); setCloseError(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Power className="h-4 w-4 text-red-400" />
+              End this session?
+            </DialogTitle>
+            <DialogDescription className="sr-only">Confirm ending the running Claude session</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              This stops the running Claude process
+              {closeTarget ? <> (<span className="font-mono text-foreground">PID {closeTarget.pid}</span>)</> : null}
+              {closeTarget?.kind === "bg" && closeTarget.jobName ? <> — the background job “{closeTarget.jobName}”</> : null}.
+              The conversation transcript is <span className="text-foreground font-medium">kept</span> — it stays in Sessions/Messages and can be resumed later.
+            </p>
+            {closeError && (
+              <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5">{closeError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" disabled={closing} onClick={() => { setCloseTarget(null); setCloseError(null); }}>Cancel</Button>
+            <Button size="sm" disabled={closing} onClick={handleConfirmClose} className="bg-red-500/90 hover:bg-red-500 text-white gap-1.5">
+              {closing ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Ending…</> : <><Power className="h-3.5 w-3.5" />End session</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -692,6 +800,8 @@ function ActiveSessionCard({
   onTogglePin,
   onCompactClick,
   onOpenInSessions,
+  onShowMessage,
+  onClose,
 }: {
   session: ActiveSession;
   index: number;
@@ -702,6 +812,8 @@ function ActiveSessionCard({
   onTogglePin: (id: string) => void;
   onCompactClick: () => void;
   onOpenInSessions: () => void;
+  onShowMessage: () => void;
+  onClose: () => void;
 }) {
   const fallbackTitle = session.slug || shortSummary(session.firstMessage, 5) || session.sessionId.slice(0, 12) + "...";
   const title = session.customName || fallbackTitle;
@@ -782,6 +894,14 @@ function ActiveSessionCard({
                 </span>
               )}
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">PID {session.pid}</Badge>
+              {session.kind === "bg" && (
+                <Badge
+                  className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/20 gap-1"
+                  title={session.jobName ? `Headless background job (no terminal window): ${session.jobName}` : "Headless background session — runs without a terminal window"}
+                >
+                  <Bot className="h-2.5 w-2.5" /> BACKGROUND
+                </Badge>
+              )}
               {session.permissionMode === "bypass" && (
                 <Badge className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/20">BYPASS</Badge>
               )}
@@ -838,22 +958,46 @@ function ActiveSessionCard({
                     <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
                   )}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 group/end"
+                  onClick={(e) => { e.stopPropagation(); onClose(); }}
+                  title="End session — stops the running process. Transcript is kept (resumable)."
+                  aria-label="End session"
+                >
+                  <Power className="h-3.5 w-3.5 text-muted-foreground group-hover/end:text-red-400" />
+                </Button>
               </div>
             </div>
 
-            {/* Latest message */}
+            {/* Latest message — click to read the full text */}
             {lastMsg && (
-              <p className="text-xs text-foreground/80 mt-1 line-clamp-2">
-                <span className="text-[10px] text-muted-foreground/50 mr-1">Latest:</span>
-                {lastMsg}
-              </p>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onShowMessage(); }}
+                className="block w-full text-left mt-1 rounded hover:bg-muted/40 transition-colors cursor-pointer"
+                title="Click to read the full message"
+              >
+                <p className="text-xs text-foreground/80 line-clamp-2">
+                  <span className="text-[10px] text-muted-foreground/50 mr-1">Latest:</span>
+                  {lastMsg}
+                </p>
+              </button>
             )}
             {/* First message (if different from last) */}
             {firstMsg && firstMsg !== lastMsg && (
-              <p className="text-[11px] text-muted-foreground/60 truncate mt-0.5">
-                <span className="text-[10px] mr-1">Started:</span>
-                {firstMsg}
-              </p>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onShowMessage(); }}
+                className="block w-full text-left mt-0.5 rounded hover:bg-muted/40 transition-colors cursor-pointer"
+                title="Click to read the full message"
+              >
+                <p className="text-[11px] text-muted-foreground/60 truncate">
+                  <span className="text-[10px] mr-1">Started:</span>
+                  {firstMsg}
+                </p>
+              </button>
             )}
 
             {/* Meta row */}

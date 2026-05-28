@@ -112,4 +112,46 @@ router.post("/api/live/compact", (req: Request, res: Response) => {
   });
 });
 
+/**
+ * POST /api/live/close — End (kill) the running Claude process for a session.
+ * Stops the live session but KEEPS its transcript on disk (still browsable and
+ * resumable). Cross-platform; the PID is resolved server-side from the active-
+ * session list, never taken from the client, so arbitrary PIDs can't be killed.
+ */
+router.post("/api/live/close", (req: Request, res: Response) => {
+  const { sessionId } = req.body as { sessionId?: string };
+  if (!sessionId || typeof sessionId !== "string" || !/^[a-f0-9-]{36}$/i.test(sessionId)) {
+    return res.status(400).json({ success: false, message: "invalid sessionId" });
+  }
+
+  const session = getLiveData().activeSessions.find(s => s.sessionId === sessionId);
+  if (!session || !session.pid) {
+    return res.status(404).json({ success: false, message: "Session not found in active sessions" });
+  }
+  const pid = session.pid;
+
+  if (process.platform === "win32") {
+    // /T kills the process tree, /F forces.
+    const child = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: ["ignore", "pipe", "pipe"], shell: false });
+    let err = "";
+    child.stderr?.on("data", (d: Buffer) => { err += d.toString(); });
+    const t = setTimeout(() => { try { child.kill(); } catch {} }, 8000);
+    child.on("close", (code) => {
+      clearTimeout(t);
+      if (code === 0) res.json({ success: true, message: `Ended session (pid ${pid}). Transcript kept.`, pid });
+      else res.json({ success: false, message: err.trim() || `taskkill exited ${code}`, pid });
+    });
+    child.on("error", (e) => { clearTimeout(t); res.status(500).json({ success: false, message: e.message, pid }); });
+    return;
+  }
+
+  // macOS / Linux
+  try {
+    process.kill(pid, "SIGTERM");
+    res.json({ success: true, message: `Ended session (pid ${pid}). Transcript kept.`, pid });
+  } catch (e) {
+    res.status(500).json({ success: false, message: (e as Error).message, pid });
+  }
+});
+
 export default router;

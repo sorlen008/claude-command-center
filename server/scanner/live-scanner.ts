@@ -184,12 +184,12 @@ function getSessionDetails(filePath: string): SessionDetails {
       if (!foundLastMsg && record.type === "user") {
         const content = record.message?.content;
         if (typeof content === "string" && content.length > 5) {
-          lastMessage = content.replace(/\n/g, " ").trim().slice(0, 200);
+          lastMessage = content.replace(/\n/g, " ").trim().slice(0, 4000);
           foundLastMsg = true;
         } else if (Array.isArray(content)) {
           for (const item of content) {
             if (item?.type === "text" && typeof item.text === "string" && item.text.length > 5) {
-              lastMessage = item.text.replace(/\n/g, " ").trim().slice(0, 200);
+              lastMessage = item.text.replace(/\n/g, " ").trim().slice(0, 4000);
               foundLastMsg = true;
               break;
             }
@@ -249,7 +249,7 @@ export function getLiveData(): LiveData {
       for (const f of files) {
         if (!f.isFile() || !f.name.endsWith(".json")) continue;
         const filePath = normPath(sessionsDir, f.name);
-        const data = safeReadJson(filePath) as { pid?: number; sessionId?: string; cwd?: string; startedAt?: number } | null;
+        const data = safeReadJson(filePath) as { pid?: number; sessionId?: string; cwd?: string; startedAt?: number; kind?: string; name?: string } | null;
         if (!data || !data.sessionId) continue;
 
         const session: ActiveSession = {
@@ -258,6 +258,9 @@ export function getLiveData(): LiveData {
           cwd: (data.cwd || "").replace(/\\/g, "/"),
           startedAt: data.startedAt || 0,
           activeAgents: [],
+          // "interactive" = a real terminal; "bg" = headless background job (no window).
+          kind: data.kind,
+          jobName: data.kind === "bg" ? data.name : undefined,
         };
 
         // 2. Check for active agents in this session's subagents directory

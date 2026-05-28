@@ -373,6 +373,8 @@ export interface ActiveSession {
   gitBranch?: string;
   isPinned?: boolean;
   hasHistory?: boolean;  // true if a matching JSONL session file exists
+  kind?: string;         // session metadata "kind": "interactive" (a terminal) vs "bg" (headless background job)
+  jobName?: string;      // background-job name (only present for kind === "bg")
 }
 
 export interface ActiveAgent {

@@ -37,6 +37,24 @@ interface MessagesResponse {
   messages: SessionMessage[];
 }
 
+interface SearchMatch {
+  role: "user" | "assistant";
+  text: string;        // ~200-char snippet centred on the match
+  timestamp: string;
+}
+interface DeepSearchItem {
+  sessionId: string;
+  session: SessionData;
+  matches: SearchMatch[];
+  matchCount: number;
+}
+interface DeepSearchResponse {
+  results: DeepSearchItem[];
+  totalMatches: number;
+  searchedSessions: number;
+  durationMs: number;
+}
+
 function formatTime(timestamp: string): string {
   if (!timestamp) return "";
   try {
@@ -73,17 +91,19 @@ export default function MessageHistory() {
 
   const sessions = data?.sessions || [];
 
-  // Filter sessions by search
-  const filteredSessions = search
-    ? sessions.filter((s) => {
-        const q = search.toLowerCase();
-        return (
-          (s.firstMessage && s.firstMessage.toLowerCase().includes(q)) ||
-          (s.slug && s.slug.toLowerCase().includes(q)) ||
-          (s.projectKey && s.projectKey.toLowerCase().includes(q))
-        );
-      })
-    : sessions;
+  // Real message-content search via the deep-search backend (matches actual
+  // message text + summaries, not just session titles). Kicks in at 2+ chars.
+  const trimmed = search.trim();
+  const searching = trimmed.length >= 2;
+  const { data: searchData, isFetching: searchLoading } = useQuery<DeepSearchResponse>({
+    queryKey: [`/api/sessions/search?q=${encodeURIComponent(trimmed)}&field=all&limit=50`],
+    enabled: searching,
+    staleTime: 30000,
+  });
+
+  // When not searching, show the full chronological list. (Search switches to
+  // the deep-search results below — it matches message content, not just titles.)
+  const filteredSessions = sessions;
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px]">
@@ -92,13 +112,17 @@ export default function MessageHistory() {
         <div>
           <h1 className="text-2xl font-bold text-gradient">Message History</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Chronological timeline of all messages across {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+            {searching
+              ? <>Searching message content{searchData ? <> · {searchData.totalMatches} match{searchData.totalMatches !== 1 ? "es" : ""} in {searchData.results.length} session{searchData.results.length !== 1 ? "s" : ""}</> : "…"}</>
+              : <>Chronological timeline of all messages across {sessions.length} session{sessions.length !== 1 ? "s" : ""}</>}
           </p>
         </div>
         <div className="relative w-72">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          {searchLoading
+            ? <Loader2 className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />
+            : <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />}
           <Input
-            placeholder="Search sessions..."
+            placeholder="Search all messages…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -106,12 +130,34 @@ export default function MessageHistory() {
         </div>
       </div>
 
-      {/* Session List */}
-      {isLoading ? (
+      {/* Search results (message content) */}
+      {searching ? (
+        searchLoading && !searchData ? (
+          <ListSkeleton rows={6} />
+        ) : (searchData?.results.length ?? 0) === 0 ? (
+          <div className="text-muted-foreground text-center py-12">
+            No messages match “{trimmed}”
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {searchData!.results.map((r, i) => (
+              <SessionRow
+                key={r.sessionId}
+                session={r.session}
+                index={i}
+                matches={r.matches}
+                matchCount={r.matchCount}
+                isExpanded={expandedSession === r.sessionId}
+                onToggle={() => setExpandedSession(expandedSession === r.sessionId ? null : r.sessionId)}
+              />
+            ))}
+          </div>
+        )
+      ) : /* Chronological list */ isLoading ? (
         <ListSkeleton rows={6} />
       ) : filteredSessions.length === 0 ? (
         <div className="text-muted-foreground text-center py-12">
-          {search ? "No sessions match your search" : "No sessions with messages found"}
+          No sessions with messages found
         </div>
       ) : (
         <div className="space-y-2">
@@ -137,11 +183,15 @@ function SessionRow({
   index,
   isExpanded,
   onToggle,
+  matches,
+  matchCount,
 }: {
   session: SessionData;
   index: number;
   isExpanded: boolean;
   onToggle: () => void;
+  matches?: SearchMatch[];
+  matchCount?: number;
 }) {
   const project = lastPathSegment(session.projectKey);
 
@@ -189,6 +239,11 @@ function SessionRow({
 
           {/* Right side stats */}
           <div className="flex items-center gap-3 flex-shrink-0">
+            {matchCount != null && (
+              <Badge className="text-[10px] px-1.5 py-0 bg-blue-500/20 text-blue-300 border-blue-500/30 hover:bg-blue-500/20">
+                {matchCount} match{matchCount !== 1 ? "es" : ""}
+              </Badge>
+            )}
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <MessageSquare className="h-3.5 w-3.5" />
               <span className="font-mono tabular-nums">{session.messageCount}</span>
@@ -198,6 +253,23 @@ function SessionRow({
             </span>
           </div>
         </div>
+
+        {/* Matched snippets (search mode, collapsed) — click the row to see the full thread */}
+        {!isExpanded && matches && matches.length > 0 && (
+          <div className="px-4 pb-3 pl-11 space-y-1.5" onClick={onToggle}>
+            {matches.slice(0, 4).map((m, mi) => (
+              <div key={mi} className="flex items-start gap-1.5 text-[11px]">
+                {m.role === "user"
+                  ? <User className="h-3 w-3 text-cyan-400 mt-0.5 flex-shrink-0" />
+                  : <Bot className="h-3 w-3 text-purple-400 mt-0.5 flex-shrink-0" />}
+                <span className="text-muted-foreground/80 line-clamp-2">{m.text}</span>
+              </div>
+            ))}
+            {matchCount != null && matchCount > 4 && (
+              <p className="text-[10px] text-muted-foreground/50 pl-[18px]">+{matchCount - 4} more match{matchCount - 4 !== 1 ? "es" : ""}</p>
+            )}
+          </div>
+        )}
 
         {/* Expanded messages — lazy loaded */}
         {isExpanded && (
