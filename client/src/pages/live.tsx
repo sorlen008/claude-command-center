@@ -261,6 +261,7 @@ export default function Live() {
   const [closeTarget, setCloseTarget] = useState<ActiveSession | null>(null); // end-session confirm
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [bgInfoOpen, setBgInfoOpen] = useState(false);  // "what is a background session?" explainer
   const tick = useTick(1000);
   const isCompact = new URLSearchParams(window.location.search).get("compact") === "true";
   const prevSessionIdsRef = useRef<Set<string> | null>(null);
@@ -569,6 +570,7 @@ export default function Live() {
                   onOpenInSessions={() => setLocation(`/sessions?session=${session.sessionId}`)}
                   onShowMessage={() => setMsgTarget(session)}
                   onClose={() => { setCloseError(null); setCloseTarget(session); }}
+                  onExplainBackground={() => setBgInfoOpen(true)}
                   isNew={newSessionIds.has(session.sessionId)}
                   copiedId={copiedId}
                   onCopyResume={handleCopyResume}
@@ -786,6 +788,45 @@ export default function Live() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* "What is a background session?" explainer */}
+      <Dialog open={bgInfoOpen} onOpenChange={setBgInfoOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-purple-400" />
+              What is a background session?
+            </DialogTitle>
+            <DialogDescription className="sr-only">Explanation of headless background Claude Code sessions</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              A <span className="text-foreground font-medium">background</span> (headless) session is a Claude Code run that has <span className="text-foreground font-medium">no terminal window</span>. It usually starts as a forked or delegated job — for example a task launched in the background, or a session started with <code className="text-[11px] font-mono bg-muted/60 rounded px-1">--fork-session</code>.
+            </p>
+            <div className="rounded-lg border border-border/50 bg-muted/30 p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <Bot className="h-3.5 w-3.5 text-purple-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">Runs and uses tokens even though you don't see a window for it</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Monitor className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">You can't type into it directly the way you can with your open terminals</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <MessageSquare className="h-3.5 w-3.5 text-cyan-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">Click its Started/Latest line to read what it's doing</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Power className="h-3.5 w-3.5 text-red-400 mt-0.5 shrink-0" />
+                <span className="text-xs text-foreground/90">If you don't need it, use the End-session button to stop it (its transcript is kept)</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground/70">
+              That's why the header counts terminals and background sessions separately — so the number always matches the terminals you can actually see.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -802,6 +843,7 @@ function ActiveSessionCard({
   onOpenInSessions,
   onShowMessage,
   onClose,
+  onExplainBackground,
 }: {
   session: ActiveSession;
   index: number;
@@ -814,6 +856,7 @@ function ActiveSessionCard({
   onOpenInSessions: () => void;
   onShowMessage: () => void;
   onClose: () => void;
+  onExplainBackground: () => void;
 }) {
   const fallbackTitle = session.slug || shortSummary(session.firstMessage, 5) || session.sessionId.slice(0, 12) + "...";
   const title = session.customName || fallbackTitle;
@@ -896,8 +939,9 @@ function ActiveSessionCard({
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">PID {session.pid}</Badge>
               {session.kind === "bg" && (
                 <Badge
-                  className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/20 gap-1"
-                  title={session.jobName ? `Headless background job (no terminal window): ${session.jobName}` : "Headless background session — runs without a terminal window"}
+                  onClick={(e) => { e.stopPropagation(); onExplainBackground(); }}
+                  className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/30 gap-1 cursor-pointer"
+                  title="What is a background session? (click to learn more)"
                 >
                   <Bot className="h-2.5 w-2.5" /> BACKGROUND
                 </Badge>
