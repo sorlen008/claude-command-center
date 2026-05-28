@@ -65,35 +65,60 @@ function sanitizePath(p: string): string {
   return p.replace(/[^a-zA-Z0-9\s/\\:._\-]/g, "");
 }
 
+/**
+ * Open a new terminal window sitting in `dir` (cross-platform). The directory
+ * is sanitized here to prevent command injection. If `command` is provided it
+ * runs after the `cd`; otherwise the shell just opens in the directory and
+ * stays interactive. `command` MUST be built from sanitized/whitelisted tokens
+ * by the caller — never pass raw user input.
+ */
+function spawnTerminalInDir(dir: string, command?: string): void {
+  const env = { ...process.env, CLAUDECODE: undefined };
+  const plat = process.platform;
+  const cwd = sanitizePath(dir || process.cwd());
+  let child;
+  if (plat === "win32") {
+    const winCwd = cwd.replace(/\//g, "\\");
+    const tail = command ? ` && ${command}` : "";
+    // cmd /k keeps the window open after the optional command.
+    child = spawn(`start "Claude Command Center" cmd /k "cd /d \"${winCwd}\"${tail}"`, [], {
+      detached: true, stdio: "ignore", shell: true, env: env as NodeJS.ProcessEnv,
+    });
+  } else if (plat === "darwin") {
+    const safeCwd = cwd.replace(/'/g, "'\\''");
+    const tail = command ? ` && ${command}` : "";
+    child = spawn("osascript", ["-e", `tell application "Terminal" to do script "cd '${safeCwd}'${tail}"`], {
+      detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
+    });
+  } else {
+    const safeCwd = cwd.replace(/'/g, "'\\''");
+    // Without a command, exec the user's shell so the terminal stays open.
+    const inner = command ? `cd '${safeCwd}' && ${command}` : `cd '${safeCwd}' && exec "$SHELL"`;
+    child = spawn("x-terminal-emulator", ["-e", "bash", "-c", inner], {
+      detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
+    });
+  }
+  child.on("error", () => {});
+  child.unref();
+}
+
 /** Delegate to terminal — opens a new terminal with claude --resume in the session's cwd (cross-platform) */
 export function delegateToTerminal(session: SessionData): DelegationResult {
   try {
-    const env = { ...process.env, CLAUDECODE: undefined };
-    const plat = process.platform;
     const rawCwd = session.cwd || process.cwd();
-    const cwd = sanitizePath(rawCwd);
     const sid = session.id.replace(/[^a-f0-9-]/gi, ""); // UUID chars only
-    let child;
-    if (plat === "win32") {
-      // Use sanitized path to prevent command injection via session.cwd values
-      const winCwd = cwd.replace(/\//g, "\\");
-      child = spawn(`start "Claude" cmd /k "cd /d \"${winCwd}\" && claude --resume ${sid}"`, [], {
-        detached: true, stdio: "ignore", shell: true, env: env as NodeJS.ProcessEnv,
-      });
-    } else if (plat === "darwin") {
-      const safeCwd = cwd.replace(/'/g, "'\\''");
-      child = spawn("osascript", ["-e", `tell application "Terminal" to do script "cd '${safeCwd}' && claude --resume ${sid}"`], {
-        detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
-      });
-    } else {
-      const safeCwd = cwd.replace(/'/g, "'\\''");
-      child = spawn("x-terminal-emulator", ["-e", "bash", "-c", `cd '${safeCwd}' && claude --resume ${sid}`], {
-        detached: true, stdio: "ignore", env: env as NodeJS.ProcessEnv,
-      });
-    }
-    child.on("error", () => {});
-    child.unref();
-    return { target: "terminal", status: "dispatched", message: `Opened terminal in ${cwd} with --resume ${session.id}` };
+    spawnTerminalInDir(rawCwd, `claude --resume ${sid}`);
+    return { target: "terminal", status: "dispatched", message: `Opened terminal in ${sanitizePath(rawCwd)} with --resume ${session.id}` };
+  } catch (err) {
+    return { target: "terminal", status: "failed", message: (err as Error).message };
+  }
+}
+
+/** Open a plain terminal sitting in `dir` — no command, just an interactive shell (cross-platform) */
+export function openTerminalInDir(dir: string): DelegationResult {
+  try {
+    spawnTerminalInDir(dir);
+    return { target: "terminal", status: "dispatched", message: `Opened terminal in ${sanitizePath(dir || process.cwd())}` };
   } catch (err) {
     return { target: "terminal", status: "failed", message: (err as Error).message };
   }

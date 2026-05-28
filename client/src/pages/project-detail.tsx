@@ -1,5 +1,5 @@
 import { useParams, Link, useLocation } from "wouter";
-import { useProjectDetail } from "@/hooks/use-projects";
+import { useProjectDetail, useOpenProjectTerminal } from "@/hooks/use-projects";
 import { useMarkdownContent } from "@/hooks/use-markdown";
 import { useSessions, useOpenSession } from "@/hooks/use-sessions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +40,20 @@ export default function ProjectDetail() {
         setOpenState({ id, phase: "done" });
         setTimeout(() => setOpenState(prev => prev?.id === id ? null : prev), 2000);
       },
+    });
+  };
+
+  // Open a native terminal in this project's directory. Like Resume, this hook
+  // must be declared before the early returns (rules-of-hooks).
+  const openTerminal = useOpenProjectTerminal();
+  const [termPhase, setTermPhase] = useState<"idle" | "opening" | "done" | "error">("idle");
+  const handleOpenTerminal = () => {
+    if (!params.id) return;
+    setTermPhase("opening");
+    openTerminal.mutate(params.id, {
+      onSuccess: () => setTermPhase("done"),
+      onError: () => setTermPhase("error"),
+      onSettled: () => setTimeout(() => setTermPhase("idle"), 2500),
     });
   };
 
@@ -106,6 +120,25 @@ export default function ProjectDetail() {
             </div>
           )}
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto gap-1.5 self-start"
+          disabled={termPhase === "opening"}
+          onClick={handleOpenTerminal}
+          title={`Open a terminal in ${project.path}`}
+        >
+          {termPhase === "opening" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-green-400" />
+          ) : termPhase === "done" ? (
+            <Check className="h-3.5 w-3.5 text-green-400" />
+          ) : termPhase === "error" ? (
+            <X className="h-3.5 w-3.5 text-red-400" />
+          ) : (
+            <Terminal className="h-3.5 w-3.5 text-green-400" />
+          )}
+          {termPhase === "opening" ? "Opening…" : termPhase === "done" ? "Opened" : termPhase === "error" ? "Failed" : "Open Terminal"}
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2">

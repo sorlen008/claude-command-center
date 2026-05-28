@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
 import { entityId } from "../scanner/utils";
+import { openTerminalInDir } from "../scanner/session-delegation";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -166,6 +167,25 @@ router.get("/api/projects/:id", (req: Request, res: Response) => {
   const linkedEntities = linkedIds.map((id) => storage.getEntity(id)).filter(Boolean);
 
   res.json({ project, relationships: rels, linkedEntities });
+});
+
+/** POST /api/projects/:id/open-terminal — open a terminal in the project's directory */
+router.post("/api/projects/:id/open-terminal", (req: Request, res: Response) => {
+  const project = storage.getEntity(req.params.id as string);
+  if (!project || project.type !== "project") {
+    return res.status(404).json({ message: "Project not found" });
+  }
+  const dir = (project as any).path as string;
+  // Guard: the dir is a real path at scan time, but it may have been moved or
+  // deleted since. Fail clearly rather than opening a terminal in nowhere.
+  if (!dir || !fs.existsSync(dir)) {
+    return res.status(404).json({ message: `Project directory no longer exists: ${dir || "(unknown)"}` });
+  }
+  const result = openTerminalInDir(dir);
+  if (result.status === "failed") {
+    return res.status(500).json(result);
+  }
+  res.json(result);
 });
 
 export default router;
