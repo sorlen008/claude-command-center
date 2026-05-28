@@ -201,7 +201,7 @@ sha256sum -c checksums-vX.Y.Z.sha256
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues via [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues via [SECURITY.md](SECURITY.md). Contributors are credited in [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 ## License
 
