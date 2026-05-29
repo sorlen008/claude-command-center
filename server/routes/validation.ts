@@ -50,11 +50,21 @@ export function qstr(v: unknown): string | undefined {
   return Array.isArray(v) ? (v[0] as string) : (v as string | undefined);
 }
 
-/** Validate that a path is under the user's home directory. Returns normalized path or null. */
+/**
+ * Validate a path for markdown writes. Returns normalized path or null.
+ * Must be (a) under the user's home directory AND (b) a markdown file.
+ * The extension check is the security boundary: it blocks writing
+ * ~/.claude/settings.json (hooks run shell), shell rc files, git hooks, etc. —
+ * i.e. the arbitrary-write→RCE vector — while still allowing CLAUDE.md / memory
+ * markdown editing.
+ */
 export function validateMarkdownPath(filePath: string): string | null {
   const resolved = path.resolve(filePath);
   const home = os.homedir();
   if (!resolved.startsWith(home + path.sep) && resolved !== home) {
+    return null;
+  }
+  if (!/\.(md|markdown)$/i.test(resolved)) {
     return null;
   }
   return resolved;

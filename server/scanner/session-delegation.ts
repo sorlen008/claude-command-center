@@ -79,10 +79,12 @@ function spawnTerminalInDir(dir: string, command?: string): void {
   let child;
   if (plat === "win32") {
     const winCwd = cwd.replace(/\//g, "\\");
-    const tail = command ? ` && ${command}` : "";
-    // cmd /k keeps the window open after the optional command.
-    child = spawn(`start "Claude Command Center" cmd /k "cd /d \"${winCwd}\"${tail}"`, [], {
-      detached: true, stdio: "ignore", shell: true, env: env as NodeJS.ProcessEnv,
+    // Pass the directory as the spawn cwd (the new `start` window inherits it)
+    // instead of interpolating the path into the command string — so a path
+    // value can't break out of the command. sanitizePath stays as a 2nd layer.
+    const inner = command ? `cmd /k "${command}"` : "cmd /k";
+    child = spawn(`start "Claude Command Center" ${inner}`, [], {
+      cwd: winCwd, detached: true, stdio: "ignore", shell: true, env: env as NodeJS.ProcessEnv,
     });
   } else if (plat === "darwin") {
     const safeCwd = cwd.replace(/'/g, "'\\''");

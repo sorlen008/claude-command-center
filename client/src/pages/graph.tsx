@@ -464,8 +464,13 @@ export default function GraphPage() {
   // count of the focused node, regardless of how deep the blast radius goes.
   const hoverStyleTag = useMemo(() => {
     if (!connectedIds) return null;
-    const nodeSelectors = Array.from(connectedIds.nodeIds).map((id) => `.react-flow__node[data-id="${id}"] .graph-node`).join(",\n");
-    const edgeSelectors = Array.from(connectedIds.edgeIds).map((id) => `.react-flow__edge[data-id="${id}"] path`).join(",\n");
+    // This string is injected via dangerouslySetInnerHTML into a <style> tag, so
+    // an id with `"]`/`</style>` could break out. IDs are length-capped but not
+    // char-restricted on import, so drop any id with unsafe chars (the highlight
+    // is purely cosmetic, so skipping a weird id is harmless).
+    const SAFE_ID = /^[\w:.-]+$/;
+    const nodeSelectors = Array.from(connectedIds.nodeIds).filter((id) => SAFE_ID.test(id)).map((id) => `.react-flow__node[data-id="${id}"] .graph-node`).join(",\n");
+    const edgeSelectors = Array.from(connectedIds.edgeIds).filter((id) => SAFE_ID.test(id)).map((id) => `.react-flow__edge[data-id="${id}"] path`).join(",\n");
     return `
       .react-flow__node .graph-node { opacity: 0.15; transition: opacity 0.2s ease, box-shadow 0.2s ease; }
       .react-flow__edge path { opacity: 0.06; transition: opacity 0.2s ease; }

@@ -44,6 +44,47 @@ if (cliArgs.includes("--report")) {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: false }));
 
+  // --- Localhost trust boundary -------------------------------------------
+  // This dashboard reads private session data and exposes process-spawning,
+  // file-writing, and self-update endpoints. It's meant to run on loopback, so:
+  //  - reject requests whose Host header isn't a local name (blocks DNS-rebinding
+  //    attacks that bypass the loopback bind), and
+  //  - reject cross-site state-changing requests via an Origin allowlist
+  //    (lightweight CSRF defense — no token needed for a same-origin app).
+  // Requests with no Origin (same-origin fetch, curl, the watchdog's
+  // Invoke-WebRequest) are allowed. Set COMMAND_CENTER_ALLOWED_HOSTS
+  // (comma-separated hostnames) only if you intentionally expose it on a LAN.
+  const ALLOWED_HOSTS = new Set<string>([
+    "localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0",
+    ...(process.env.COMMAND_CENTER_ALLOWED_HOSTS || "")
+      .split(",").map(h => h.trim().toLowerCase()).filter(Boolean),
+  ]);
+  const hostnameOf = (hostHeader: string | undefined): string => {
+    if (!hostHeader) return "";
+    // strip port; handle bracketed IPv6
+    const h = hostHeader.trim().toLowerCase();
+    if (h.startsWith("[")) return h.slice(0, h.indexOf("]") + 1);
+    return h.split(":")[0];
+  };
+  app.use((req, res, next) => {
+    const host = hostnameOf(req.headers.host);
+    if (host && !ALLOWED_HOSTS.has(host)) {
+      return res.status(403).json({ message: "Forbidden: this dashboard only accepts local connections." });
+    }
+    const method = req.method.toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const origin = req.headers.origin;
+      if (origin) {
+        let originHost = "";
+        try { originHost = new URL(origin).hostname.toLowerCase(); } catch { originHost = "<invalid>"; }
+        if (!ALLOWED_HOSTS.has(originHost)) {
+          return res.status(403).json({ message: "Forbidden: cross-origin request blocked." });
+        }
+      }
+    }
+    next();
+  });
+
   // Request logging
   app.use((req, res, next) => {
     const start = Date.now();

@@ -1,16 +1,28 @@
 import { Router } from "express";
 import { z } from "zod";
+import path from "path";
+import os from "os";
 import { storage } from "../storage";
 import { defaultAppSettings } from "../db";
 import { validate } from "./validation";
 
+// Reject scan paths outside the user's home dir — the scanners read these
+// paths' content, so an arbitrary path would leak files from anywhere on disk.
+const underHome = (p: string): boolean => {
+  const resolved = path.resolve(p);
+  const home = os.homedir();
+  return resolved === home || resolved.startsWith(home + path.sep);
+};
+const homePathArray = z.array(z.string().refine(underHome, "path must be under your home directory")).max(50);
+const homePathNullable = z.string().refine(underHome, "path must be under your home directory").nullable().optional();
+
 const ScanPathsSchema = z.object({
-  homeDir: z.string().nullable().optional(),
-  claudeDir: z.string().nullable().optional(),
-  extraMcpFiles: z.array(z.string()).max(50).optional(),
-  extraProjectDirs: z.array(z.string()).max(50).optional(),
-  extraSkillDirs: z.array(z.string()).max(50).optional(),
-  extraPluginDirs: z.array(z.string()).max(50).optional(),
+  homeDir: homePathNullable,
+  claudeDir: homePathNullable,
+  extraMcpFiles: homePathArray.optional(),
+  extraProjectDirs: homePathArray.optional(),
+  extraSkillDirs: homePathArray.optional(),
+  extraPluginDirs: homePathArray.optional(),
 }).optional();
 
 const SettingsPatchSchema = z.object({

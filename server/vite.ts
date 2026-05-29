@@ -11,7 +11,9 @@ export async function setupVite(server: Server, app: Express) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server, path: "/vite-hmr" },
-    allowedHosts: true as const,
+    // Localhost only — narrows the dev-mode DNS-rebinding surface (the
+    // server-side Host allowlist in index.ts is the primary guard).
+    allowedHosts: ["localhost", "127.0.0.1"] as string[],
   };
 
   const vite = await createViteServer({
