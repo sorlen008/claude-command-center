@@ -10,6 +10,11 @@ const MarkdownContentSchema = z.object({
   content: z.string().max(1_000_000, "Content too large (max 1MB)"),
 });
 
+const MarkdownMetaSchema = z.object({
+  locked: z.boolean().optional(),
+  pinned: z.boolean().optional(),
+}).strict();
+
 const MarkdownCreateSchema = z.object({
   filePath: z.string().min(1, "filePath is required"),
   content: z.string().max(1_000_000, "Content too large (max 1MB)"),
@@ -244,7 +249,8 @@ router.patch("/api/markdown/:id/meta", (req: Request, res: Response) => {
   if (!entity || entity.type !== "markdown") {
     return res.status(404).json({ message: "Markdown file not found" });
   }
-  const body = req.body as { locked?: boolean; pinned?: boolean };
+  const body = validate(MarkdownMetaSchema, req.body, res);
+  if (!body) return;
   storage.setMarkdownMeta(entity.path, body);
   res.json({ message: "Updated", meta: storage.getMarkdownMeta(entity.path) });
 });

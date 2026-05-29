@@ -132,6 +132,8 @@ When adding integrations with external services:
 | `HOST` | Server host | 127.0.0.1 |
 | `COMMAND_CENTER_DATA` | Data directory | ~/.claude-command-center |
 | `NERVE_CENTER_SERVICES` | Services to monitor (name:port,name:port) | Command Center:5100 |
+| `COMMAND_CENTER_ALLOWED_HOSTS` | Extra Host names allowed past the localhost trust boundary (comma-separated) — only set if intentionally exposing on a LAN | (localhost only) |
+| `TELEGRAM_BRIDGE_URL` | URL of a local Telegram bridge for session delegation | http://127.0.0.1:5005 |
 | `VOICE_CALLER_SCRIPT` | Path to voice outbound caller script | (disabled) |
 | `VOICE_PHONE` | Phone number for voice calls | (disabled) |
 

@@ -130,7 +130,12 @@ export async function deepSearch(params: {
   // Filter sessions by date range / project
   let filtered = sessions.filter(s => !s.isEmpty);
   if (dateFrom) filtered = filtered.filter(s => (s.lastTs || "") >= dateFrom);
-  if (dateTo) filtered = filtered.filter(s => (s.firstTs || "") <= dateTo);
+  if (dateTo) {
+    // Treat a date-only dateTo as inclusive end-of-day, else same-day sessions
+    // (whose firstTs has a time component) are wrongly excluded.
+    const dateToEnd = dateTo.length <= 10 ? dateTo + "T23:59:59.999Z" : dateTo;
+    filtered = filtered.filter(s => (s.firstTs || "") <= dateToEnd);
+  }
   if (project) {
     filtered = filtered.filter(s => s.projectKey.includes(project) || s.cwd.includes(project));
   }

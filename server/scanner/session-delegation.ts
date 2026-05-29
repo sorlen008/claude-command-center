@@ -126,15 +126,26 @@ export function openTerminalInDir(dir: string): DelegationResult {
   }
 }
 
-/** Delegate to Telegram bot — POST to the bot's HTTP API */
+/**
+ * Delegate to Telegram bot — POST to the bot's HTTP API.
+ * Configurable via TELEGRAM_BRIDGE_URL (e.g. http://127.0.0.1:5005); defaults to
+ * a local bridge on :5005 and fails gracefully if no bridge is running.
+ */
 export async function delegateToTelegram(session: SessionData, task: string): Promise<DelegationResult> {
   const contextPrompt = buildContextPrompt(session);
   const fullMessage = task ? `${task}\n\nContext:\n${contextPrompt.slice(0, 2000)}` : contextPrompt.slice(0, 3000);
 
+  let bridge: URL;
+  try {
+    bridge = new URL(process.env.TELEGRAM_BRIDGE_URL || "http://127.0.0.1:5005");
+  } catch {
+    return { target: "telegram", status: "failed", message: "Invalid TELEGRAM_BRIDGE_URL" };
+  }
+
   return new Promise((resolve) => {
     const postData = JSON.stringify({ message: fullMessage, session_id: session.id });
     const req = http.request({
-      hostname: "127.0.0.1", port: 5005, method: "POST", path: "/api/send",
+      hostname: bridge.hostname, port: bridge.port || 5005, method: "POST", path: "/api/send",
       headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(postData) },
       timeout: 5000,
     }, (res) => {
@@ -142,7 +153,7 @@ export async function delegateToTelegram(session: SessionData, task: string): Pr
       resolve({ target: "telegram", status: "dispatched", message: "Sent to Telegram bot", contextPrompt: fullMessage.slice(0, 500) });
     });
     req.on("error", () => {
-      resolve({ target: "telegram", status: "failed", message: "Telegram bot HTTP API not available on :5005" });
+      resolve({ target: "telegram", status: "failed", message: `Telegram bridge not reachable at ${bridge.origin} (set TELEGRAM_BRIDGE_URL)` });
     });
     req.on("timeout", () => { req.destroy(); resolve({ target: "telegram", status: "failed", message: "Telegram bot timed out" }); });
     req.write(postData);
