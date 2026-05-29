@@ -26,6 +26,18 @@ if (cliArgs.includes("--report")) {
   import("./cli/audit").then(m => m.runAudit(jsonMode)).catch(err => { console.error(err.message); process.exit(1); });
 } else {
   // Server mode — start the web dashboard
+
+  // Crash-logging only — keep the single-process dashboard alive when a stray
+  // rejection or an escaped event-callback error (e.g. a double res.json) would
+  // otherwise take it down. We log and continue rather than exit; we do NOT use
+  // the resume-after-uncaughtException anti-pattern for normal control flow.
+  process.on("unhandledRejection", (reason) => {
+    console.error("[unhandledRejection]", reason);
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("[uncaughtException]", err);
+  });
+
   const app = express();
   const httpServer = createServer(app);
 
@@ -86,5 +98,9 @@ if (cliArgs.includes("--report")) {
     // Run initial scan and start watcher
     await runFullScan();
     startWatcher();
-  })();
+  })().catch((err) => {
+    // A malformed ~/.claude JSONL (parsed during runFullScan) or any boot
+    // failure must not silently hang — log it loudly.
+    console.error("[startup] Fatal error during server startup:", err);
+  });
 }

@@ -97,6 +97,7 @@ router.post("/api/live/compact", (req: Request, res: Response) => {
   child.on("close", (code) => {
     clearTimeout(killTimer);
     cleanup();
+    if (res.headersSent) return;  // spawn failure can emit both 'error' and 'close'
     const out = stdout.trim();
     if (code === 0 && /(^|\r?\n)ok:/.test(out)) {
       res.json({ success: true, message: "/compact sent to terminal" });
@@ -108,6 +109,7 @@ router.post("/api/live/compact", (req: Request, res: Response) => {
   child.on("error", (e) => {
     clearTimeout(killTimer);
     cleanup();
+    if (res.headersSent) return;
     res.json({ success: false, debug: { code: -1, out: "", err: e.message, pid: session.pid } });
   });
 });
@@ -167,10 +169,11 @@ router.post("/api/live/close", (req: Request, res: Response) => {
     const t = setTimeout(() => { try { child.kill(); } catch {} }, 8000);
     child.on("close", () => {
       clearTimeout(t);
+      if (res.headersSent) return;  // spawn failure can emit both 'error' and 'close'
       const closedWindow = out.includes("shell:");
       res.json({ success: true, pid, closedWindow, message: `Ended session (pid ${pid})${closedWindow ? " and closed its window" : ""}. Transcript kept.`, detail: (out + err).trim().slice(0, 200) });
     });
-    child.on("error", (e) => { clearTimeout(t); res.status(500).json({ success: false, message: e.message, pid }); });
+    child.on("error", (e) => { clearTimeout(t); if (res.headersSent) return; res.status(500).json({ success: false, message: e.message, pid }); });
     return;
   }
 

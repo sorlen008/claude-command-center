@@ -121,7 +121,10 @@ router.get("/api/projects/rules", (_req: Request, res: Response) => {
     // 6. Memory files
     const memoryFiles: { name: string; markdownId: string }[] = [];
     try {
-      const encodedKey = projectPath.replace(/\//g, "-");
+      // Claude encodes a project dir into its key by replacing every path
+      // separator AND the drive colon with "-": C:/Users/x → C--Users-x.
+      // (The old /\//g-only replace left the colon, so this never matched on Windows.)
+      const encodedKey = projectPath.replace(/[/\\:]/g, "-");
       const memoryDir = path.join(os.homedir(), ".claude", "projects", encodedKey, "memory").replace(/\\/g, "/");
       const entries = fs.readdirSync(memoryDir);
       for (const e of entries) {

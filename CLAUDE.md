@@ -98,7 +98,7 @@ When adding fields to `PlanUsageResponse`: always restart the server after the c
 1. **First 5 Minutes** — linear walkthrough with CTA buttons
 2. **Browse** — 15 categories × ~107 topics with difficulty filter (beginner / all / advanced)
 3. **Claude Code** — 8 categories × ~63 CLI commands, shortcuts, modes, features (reference for `/compact`, `/plan`, `--model`, etc.)
-4. **Glossary** — 50 terms
+4. **Glossary** — 49 terms
 5. **Cheat Sheet** — shortcuts, URL params, env vars
 
 Content lives in three typed constants: `CATEGORIES` (Browse), `CLI_CATEGORIES` (Claude Code), `GLOSSARY`. Keyboard shortcuts are imported from `keyboard-shortcuts.tsx::SHORTCUT_SECTIONS` so the Cheat Sheet and the `?` overlay never drift. Topic DOM keys are slug-based (not array indices) so deep-links survive the difficulty filter. URL hash routing: `/help#<tab>`, `/help#<category>:<topic>`, `/help#q=<query>`.

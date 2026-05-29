@@ -192,6 +192,7 @@ Respond with ONLY valid JSON (no markdown, no explanation):
 
     child.on("close", (code: number | null) => {
       clearTimeout(timeout);
+      if (res.headersSent) return;  // 'error' may have already responded
 
       console.log(`[ai-suggest] claude -p exited with code ${code}, stdout length: ${stdout.length}`);
 

@@ -63,13 +63,10 @@ function getGitBranch(cwd: string): string | undefined {
 
 import { getPricing as getModelPricingShared, getMaxTokens, getUsableContext, computeCost } from "./pricing";
 
-/** Find the session JSONL file across all project dirs.
- *  Claude Code creates a new JSONL file (with a new session ID) after context
- *  compaction, but the runtime metadata in ~/.claude/sessions/<pid>.json still
- *  references the *original* session ID.  To handle this we first look for an
- *  exact match; if that file is stale (>5 min old) we fall back to the most
- *  recently modified JSONL in the same project directory — which is very likely
- *  the continuation of the same session. */
+/** Find the session JSONL file across all project dirs by exact session-id match.
+ *  NOTE: a most-recently-modified "stale fallback" was deliberately REMOVED in
+ *  v1.21.0 (commit ec948e1) because it matched the wrong session after context
+ *  compaction. Do not reinstate it — return null on no exact match. */
 function findSessionFile(sessionId: string, projectsDir: string): string | null {
   if (!dirExists(projectsDir)) return null;
   try {
@@ -134,9 +131,6 @@ function mapPermissionMode(raw: string | undefined): ActiveSession["permissionMo
   }
 }
 
-function getModelPricing(model: string) {
-  return getModelPricingShared(model);
-}
 
 interface SessionDetails {
   contextUsage?: ActiveSession["contextUsage"];
