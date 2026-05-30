@@ -167,3 +167,23 @@ fi
 HOOK
 chmod +x .git/hooks/pre-commit
 ```
+
+### Companion: commit-message guard
+
+`new-user-safety.test.ts` (and therefore the pre-commit hook) scans *source files* but not the *commit message*. A separate `commit-msg` hook closes that gap — it greps the message for personal-info patterns and blocks the commit if any match. (This matters: a "removed PII" commit can re-leak by quoting in its body the very name/path it stripped.)
+
+Like the pre-commit hook it lives under `.git/hooks/` (untracked) — recreate it after a fresh clone, filling `PATTERN` from your own redaction list (real name, personal email, home-dir paths, phone, hostnames, location). Keep literals only in this untracked file, never in a tracked one:
+
+```bash
+cat > .git/hooks/commit-msg << 'HOOK'
+#!/bin/bash
+# Block personal info from commit messages on this public repo.
+PATTERN='YourName|you@personal\.example|home-dir-username|C--Users-yourname'
+if grep -nEi "$PATTERN" "$1" >/dev/null 2>&1; then
+  echo "BLOCKED: commit message contains personal info (public repo)."
+  grep -nEi "$PATTERN" "$1" | sed 's/^/  /'
+  exit 1
+fi
+HOOK
+chmod +x .git/hooks/commit-msg
+```
