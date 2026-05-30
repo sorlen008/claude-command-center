@@ -110,7 +110,8 @@ describe("scanScripts", () => {
     expect(r.countsByProject.get(project.id)).toBe(2);
     const watcher = r.scripts.find((s) => s.name === "watcher.py")!;
     expect(watcher.data.language).toBe("python");
-    expect(watcher.data.docstring).toBe("Watches the inbox.");
+    // The docstring now lives on the base Entity.description (was duplicated into data.docstring).
+    expect(watcher.description).toBe("Watches the inbox.");
     expect(watcher.data.projectId).toBe(project.id);
     expect(watcher.data.relativePath).toBe("watcher.py");
   });

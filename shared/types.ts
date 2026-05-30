@@ -246,11 +246,11 @@ export interface ScriptEntity extends Entity {
     projectId: string;
     /** Path relative to the project root, forward slashes, never starts with `/`. */
     relativePath: string;
-    /** Module-level docstring or first non-comment line if no docstring. May be null. */
-    docstring: string | null;
     sizeBytes: number;
   };
 }
+// The script's module-level docstring (or first non-comment line) lives on the
+// base Entity.description — it was previously duplicated into data.docstring.
 
 /**
  * Discriminated union of all entity subtypes.

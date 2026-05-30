@@ -205,7 +205,6 @@ export function scanScripts(projects: Entity[]): ScanScriptsResult {
           language,
           projectId: idx.entity.id,
           relativePath,
-          docstring,
           sizeBytes: stat.size,
         },
       });

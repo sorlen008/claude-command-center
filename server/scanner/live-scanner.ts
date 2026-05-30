@@ -182,6 +182,10 @@ function parseSessionFile(filePath: string): ParsedSession {
   const prev = parseCache.get(filePath);
   if (prev && prev.mtimeMs === st.mtimeMs && prev.sizeBytes === st.size) return prev;
 
+  // Invariant: session JSONL only grows by appending or shrinks on compaction —
+  // it's never rewritten larger with a changed prefix. So a larger size means
+  // new bytes were appended and we can fold just those onto the cached
+  // aggregates; any non-growth (or a shrink) triggers a full re-parse.
   let state: ParseState;
   let startOffset: number;
   if (prev && st.size > prev.sizeBytes && prev.offset <= st.size) {

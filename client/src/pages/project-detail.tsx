@@ -492,7 +492,7 @@ function ClaudeMdPreview({ entityId }: { entityId: string }) {
 function ScriptRow({ script, index }: { script: ScriptEntity; index: number }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const docstring = script.data.docstring;
+  const docstring = script.description;
 
   return (
     <Card

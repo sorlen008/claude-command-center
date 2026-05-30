@@ -597,27 +597,34 @@ export default function Sessions() {
       )}
 
       {/* Pagination */}
-      {data?.totalPages && data.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 py-4">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-          >
-            Previous
-          </Button>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            Page {data.page || page} of {data.totalPages} ({data.total} sessions)
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= (data.totalPages || 1)}
-            onClick={() => setPage(p => p + 1)}
-          >
-            Next
-          </Button>
+      {data?.pagination && data.pagination.totalPages > 1 && (
+        <div className="flex flex-col items-center gap-1 py-4">
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Page {data.pagination.page || page} of {data.pagination.totalPages} ({data.pagination.total} sessions)
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= data.pagination.totalPages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+          {data.pagination.capped && (
+            <span className="text-[11px] text-amber-500/80 tabular-nums">
+              Showing the first {data.pagination.totalPages * (data.pagination.limit || 1)} of {data.pagination.total} sessions — narrow the filter to reach the rest.
+            </span>
+          )}
         </div>
       )}
 

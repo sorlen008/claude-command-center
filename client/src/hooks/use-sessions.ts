@@ -22,7 +22,12 @@ export function useSessions(params?: { q?: string; sort?: string; order?: string
   if (params?.page) p.set("page", String(params.page));
   if (params?.limit) p.set("limit", String(params.limit));
   const qs = p.toString();
-  return useQuery<{ sessions: SessionData[]; stats: SessionStats; page?: number; limit?: number; total?: number; totalPages?: number }>({
+  return useQuery<{
+    sessions: SessionData[];
+    stats: SessionStats;
+    canUndo?: boolean;
+    pagination?: { page: number; limit: number; total: number; totalPages: number; capped: boolean };
+  }>({
     queryKey: [`/api/sessions${qs ? `?${qs}` : ""}`],
   });
 }

@@ -1,4 +1,5 @@
-import fs from "fs";
+import fs, { createReadStream } from "fs";
+import { createInterface } from "readline";
 import type { SessionData, SessionSummary, DeepSearchMatch, DeepSearchResult } from "@shared/types";
 import { extractMessageText } from "./utils";
 
@@ -32,55 +33,55 @@ function fuzzyMatch(textLower: string, queryWords: string[]): number {
   return textLower.indexOf(queryWords[0]);
 }
 
-/** Search a single session JSONL file for query matches */
+/** Search a single session JSONL file for query matches. Streams the file line
+ *  by line and stops as soon as `maxMatches` is reached, so a hit near the top
+ *  of a large transcript doesn't read the whole file. */
 function searchSessionFile(
   filePath: string,
   queryWords: string[],
   field: "all" | "user" | "assistant",
   maxMatches: number,
-): SearchMatch[] {
-  const matches: SearchMatch[] = [];
-
-  try {
-    const content = fs.readFileSync(filePath, "utf-8");
-    let pos = 0;
+): Promise<SearchMatch[]> {
+  return new Promise((resolve) => {
+    const matches: SearchMatch[] = [];
     let lineIndex = 0;
+    let settled = false;
 
-    while (pos < content.length && matches.length < maxMatches) {
-      const nextNewline = content.indexOf("\n", pos);
-      const lineEnd = nextNewline === -1 ? content.length : nextNewline;
-      const trimmed = content.slice(pos, lineEnd).trim();
-      pos = lineEnd + 1;
+    let stream: fs.ReadStream;
+    try {
+      stream = createReadStream(filePath, { encoding: "utf-8" });
+    } catch {
+      resolve(matches);
+      return;
+    }
+    const rl = createInterface({ input: stream, crlfDelay: Infinity });
 
-      if (!trimmed) continue;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      rl.close();
+      stream.destroy();
+      resolve(matches);
+    };
+
+    rl.on("line", (line: string) => {
+      if (settled) return;
+      const trimmed = line.trim();
+      if (!trimmed) return; // empty lines don't advance lineIndex (matches the old loop)
 
       try {
         const record = JSON.parse(trimmed);
-
-        if (record.type === "user" && (field === "all" || field === "user")) {
-          const msg = record.message;
-          if (!msg || typeof msg !== "object") { lineIndex++; continue; }
+        const want =
+          (record.type === "user" && (field === "all" || field === "user")) ||
+          (record.type === "assistant" && (field === "all" || field === "assistant"));
+        const msg = record.message;
+        if (want && msg && typeof msg === "object") {
           const text = extractMessageText(msg.content, true);
           if (text) {
             const idx = fuzzyMatch(text.toLowerCase(), queryWords);
             if (idx !== -1) {
               matches.push({
-                role: "user",
-                text: extractSnippet(text, idx),
-                timestamp: record.timestamp || "",
-                lineIndex,
-              });
-            }
-          }
-        } else if (record.type === "assistant" && (field === "all" || field === "assistant")) {
-          const msg = record.message;
-          if (!msg || typeof msg !== "object") { lineIndex++; continue; }
-          const text = extractMessageText(msg.content, true);
-          if (text) {
-            const idx = fuzzyMatch(text.toLowerCase(), queryWords);
-            if (idx !== -1) {
-              matches.push({
-                role: "assistant",
+                role: record.type,
                 text: extractSnippet(text, idx),
                 timestamp: record.timestamp || "",
                 lineIndex,
@@ -92,12 +93,13 @@ function searchSessionFile(
         // Malformed JSON line — skip
       }
       lineIndex++;
-    }
-  } catch {
-    // File unreadable
-  }
+      if (matches.length >= maxMatches) finish();
+    });
 
-  return matches;
+    rl.on("close", finish);
+    rl.on("error", finish);
+    stream.on("error", finish);
+  });
 }
 
 // Simple result cache
@@ -163,7 +165,7 @@ export async function deepSearch(params: {
     const batchResults = await Promise.all(
       batch.map(async (session) => {
         // Search in JSONL file
-        const matches = searchSessionFile(session.filePath, queryWords, field, 10);
+        const matches = await searchSessionFile(session.filePath, queryWords, field, 10);
 
         // Also search summary text if available
         const summary = summaries[session.id];
