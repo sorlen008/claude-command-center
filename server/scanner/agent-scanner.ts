@@ -310,9 +310,22 @@ function scanSubagentsDir(
   }
 }
 
+// Parsed-execution cache. A finished subagent's JSONL is immutable, so once
+// parsed it never needs re-reading — keyed by mtime+size to catch the rare
+// in-progress agent that's still appending.
+const execCache = new Map<string, { mtimeMs: number; size: number; exec: AgentExecution }>();
+
 function parseExecution(filePath: string, projectKey: string): AgentExecution | null {
+  let stat: fs.Stats;
   try {
-    const stat = fs.statSync(filePath);
+    stat = fs.statSync(filePath);
+  } catch {
+    return null;
+  }
+  const hit = execCache.get(filePath);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) return hit.exec;
+
+  try {
     const records = readHead(filePath, 5);
     const lastTs = readTailTs(filePath);
 
@@ -358,7 +371,7 @@ function parseExecution(filePath: string, projectKey: string): AgentExecution | 
       if (match) agentId = match[1];
     }
 
-    return {
+    const exec: AgentExecution = {
       agentId,
       slug,
       sessionId,
@@ -372,6 +385,10 @@ function parseExecution(filePath: string, projectKey: string): AgentExecution | 
       sizeBytes: stat.size,
       filePath: filePath.replace(/\\/g, "/"),
     };
+    execCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, exec });
+    // Bound the cache — agent files can be numerous across many sessions.
+    if (execCache.size > 5000) { const k = execCache.keys().next().value; if (k) execCache.delete(k); }
+    return exec;
   } catch {
     return null;
   }

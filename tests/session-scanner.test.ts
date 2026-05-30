@@ -338,3 +338,47 @@ describe("scanAllSessions with temp directory", () => {
     vi.doUnmock("../server/config");
   });
 });
+
+describe("countMessages", () => {
+  const dir = path.join(os.tmpdir(), "cc-count-msgs-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8));
+  // Imported dynamically (not at top level) so this doesn't evaluate
+  // session-scanner before the scanAllSessions test sets up its CLAUDE_DIR mock.
+  let countMessages: (filePath: string, mtimeMs: number, size: number) => number;
+  beforeAll(async () => {
+    fs.mkdirSync(dir, { recursive: true });
+    ({ countMessages } = await import("../server/scanner/session-scanner"));
+  });
+  afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  function write(name: string, lines: object[]): string {
+    const fp = path.join(dir, name);
+    fs.writeFileSync(fp, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    return fp;
+  }
+
+  it("counts the WHOLE transcript, not just the first ~25 records (the old head-cap bug)", () => {
+    const lines: object[] = [{ type: "system", subtype: "init" }];
+    for (let i = 0; i < 30; i++) {
+      lines.push({ type: "user", message: { role: "user", content: `q${i}` } });
+      lines.push({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "a" }] } });
+    }
+    const fp = write("big.jsonl", lines); // 60 user/assistant + 1 system
+    const st = fs.statSync(fp);
+    expect(countMessages(fp, st.mtimeMs, st.size)).toBe(60);
+  });
+
+  it("ignores non user/assistant records", () => {
+    const fp = write("mixed.jsonl", [
+      { type: "system", subtype: "init" },
+      { type: "user", message: { role: "user", content: "hi" } },
+      { type: "summary", summary: "x" },
+      { type: "assistant", message: { role: "assistant", content: "ok" } },
+    ]);
+    const st = fs.statSync(fp);
+    expect(countMessages(fp, st.mtimeMs, st.size)).toBe(2);
+  });
+
+  it("returns 0 for a missing file", () => {
+    expect(countMessages(path.join(dir, "nope.jsonl"), 1, 1)).toBe(0);
+  });
+});

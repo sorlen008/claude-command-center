@@ -174,6 +174,33 @@ function getActiveSessions(): Set<string> {
   return active;
 }
 
+// Accurate full-transcript message count, cached by mtime+size. Sessions are
+// immutable once closed, so after warmup only changed files are re-read; this
+// runs during the periodic scan, never on a request's hot path.
+const msgCountCache = new Map<string, { mtimeMs: number; size: number; count: number }>();
+export function countMessages(filePath: string, mtimeMs: number, size: number): number {
+  const hit = msgCountCache.get(filePath);
+  if (hit && hit.mtimeMs === mtimeMs && hit.size === size) return hit.count;
+  let count = 0;
+  try {
+    const content = fs.readFileSync(filePath, "utf-8");
+    for (const line of content.split("\n")) {
+      if (!line || line.indexOf('"type"') === -1) continue;
+      try {
+        const t = JSON.parse(line).type;
+        if (t === "user" || t === "assistant") count++;
+      } catch {
+        // truncated/malformed line — skip
+      }
+    }
+  } catch {
+    return hit?.count ?? 0;
+  }
+  msgCountCache.set(filePath, { mtimeMs, size, count });
+  if (msgCountCache.size > 5000) { const k = msgCountCache.keys().next().value; if (k) msgCountCache.delete(k); }
+  return count;
+}
+
 /** Parse a single session file into SessionData */
 function parseSession(
   filePath: string,
@@ -202,8 +229,10 @@ function parseSession(
       if (slug && firstTs && cwd && version && gitBranch) break;
     }
 
-    // Count messages
-    const messageCount = records.filter(r => r.type === "user" || r.type === "assistant").length;
+    // Accurate message count over the WHOLE transcript (cached by mtime+size).
+    // The old head-based count only saw the first ~25 records, so it capped
+    // there and made the list's "sort by messages" meaningless on real sessions.
+    const messageCount = countMessages(filePath, stat.mtimeMs, stat.size);
 
     // First message: try history index first
     let firstMessage = "";

@@ -173,9 +173,19 @@ export async function buildHistoricalLimits(
 
   const hits: HistoricalLimitHit[] = [];
 
+  // Skip sessions whose last activity predates the lookback window — none of
+  // their turns or rate-limit events can land inside it, so reading the file
+  // (and its subagents) is wasted I/O. Keep sessions with an unknown or
+  // unparseable lastTs, since we can't prove they're old.
+  const recent = sessions.filter((s) => {
+    if (!s.lastTs) return true;
+    const ms = Date.parse(s.lastTs);
+    return !Number.isFinite(ms) || ms >= cutoffMs;
+  });
+
   const BATCH = 20;
-  for (let i = 0; i < sessions.length; i += BATCH) {
-    const batch = sessions.slice(i, i + BATCH);
+  for (let i = 0; i < recent.length; i += BATCH) {
+    const batch = recent.slice(i, i + BATCH);
     const results = await Promise.all(batch.map(s => collectAllForSession(s, opts.claudeProjectsDir)));
     for (const { turns, events } of results) {
       if (events.length === 0) continue;
