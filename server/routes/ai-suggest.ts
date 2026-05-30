@@ -1,12 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
-import { spawn } from "child_process";
 import path from "path";
 import os from "os";
 import fs from "fs";
 import type { CustomNode, CustomEdge, CustomNodeSubType } from "@shared/types";
 import crypto from "crypto";
-import { checkClaudeAvailable } from "../scanner/claude-runner";
+import { checkClaudeAvailable, runClaude } from "../scanner/claude-runner";
 
 const router = Router();
 
@@ -147,128 +146,95 @@ Respond with ONLY valid JSON (no markdown, no explanation):
   "reasoning": ["One reason per suggestion"]
 }`;
 
+  // Run via the shared runClaude() helper (one-shot, JSON out). 5-minute budget —
+  // large ecosystems can take 2-3 min.
+  let stdout: string;
   try {
-    const env = { ...process.env };
-    delete env.CLAUDECODE;
-
-    const child = spawn("claude", ["-p", "--model", "haiku", "--no-session-persistence"], {
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    child.stdin.write(prompt);
-    child.stdin.end();
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
-    child.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
-    child.on("error", (err: Error) => {
-      clearTimeout(timeout);
-      if (!res.headersSent) {
-        res.status(500).json({ message: "Failed to spawn claude CLI", error: err.message });
-      }
-    });
-
-    const timeout = setTimeout(() => {
-      child.kill();
-    }, 300000); // 5 minutes — large ecosystems can take 2-3 min
-
-    child.on("close", (code: number | null) => {
-      clearTimeout(timeout);
-      if (res.headersSent) return;  // 'error' may have already responded
-
-      console.log(`[ai-suggest] claude -p exited with code ${code}, stdout length: ${stdout.length}`);
-
-      if (!stdout.trim()) {
-        if (code !== 0) {
-          console.error("[ai-suggest] claude -p failed with no output:", stderr.slice(0, 500));
-          return res.status(500).json({ message: "AI suggestion failed", error: stderr.slice(0, 200) || `Exit code: ${code}` });
-        }
-        return res.status(500).json({ message: "AI returned empty response" });
-      }
-
-      try {
-        let jsonStr = stdout.trim();
-        const jsonMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-        if (jsonMatch) jsonStr = jsonMatch[1].trim();
-
-        const suggestions = JSON.parse(jsonStr);
-
-        // Build dedup sets from existing data
-        const existingNodeLabels = new Set([
-          ...existingEntities.map((e) => e.name.toLowerCase()),
-          ...existingCustomNodes.map((n) => n.label.toLowerCase()),
-        ]);
-        const existingEdgeKeys = new Set([
-          ...storage.getAllRelationships().map((r) => {
-            const src = existingEntities.find((e) => e.id === r.sourceId)?.name || r.sourceId;
-            const tgt = existingEntities.find((e) => e.id === r.targetId)?.name || r.targetId;
-            return `${src.toLowerCase()}::${tgt.toLowerCase()}::${r.relation}`;
-          }),
-          ...storage.getCustomEdges().map((e) => {
-            const srcNode = existingCustomNodes.find((n) => n.id === e.source);
-            const srcEntity = existingEntities.find((en) => en.id === e.source);
-            const tgtNode = existingCustomNodes.find((n) => n.id === e.target);
-            const tgtEntity = existingEntities.find((en) => en.id === e.target);
-            const srcName = srcNode?.label || srcEntity?.name || e.source;
-            const tgtName = tgtNode?.label || tgtEntity?.name || e.target;
-            return `${srcName.toLowerCase()}::${tgtName.toLowerCase()}::${e.label}`;
-          }),
-        ]);
-
-        // Filter out duplicates
-        const nodes: CustomNode[] = (suggestions.nodes || [])
-          .filter((n: any) => {
-            const label = String(n.label || "").toLowerCase();
-            if (existingNodeLabels.has(label)) {
-              console.log(`[ai-suggest] Skipping duplicate node: ${n.label}`);
-              return false;
-            }
-            return label.length > 0;
-          })
-          .map((n: any) => ({
-            id: `ai-${n.id || crypto.randomBytes(4).toString("hex")}`,
-            subType: (["database", "api", "service", "cicd", "deploy", "queue", "cache", "other"].includes(n.subType) ? n.subType : "other") as CustomNodeSubType,
-            label: String(n.label || "Unknown"),
-            description: n.description ? String(n.description) : undefined,
-            color: n.color ? String(n.color) : undefined,
-            source: "ai-suggested" as const,
-          }));
-
-        const edges: CustomEdge[] = (suggestions.edges || [])
-          .filter((e: any) => {
-            if (!e.source || !e.target || !e.label) return false;
-            if (String(e.source) === String(e.target)) return false; // no self-edges
-            const key = `${String(e.source).toLowerCase()}::${String(e.target).toLowerCase()}::${String(e.label)}`;
-            if (existingEdgeKeys.has(key)) {
-              console.log(`[ai-suggest] Skipping duplicate edge: ${e.source} -> ${e.target} [${e.label}]`);
-              return false;
-            }
-            return true;
-          })
-          .map((e: any) => ({
-            id: `ai-edge-${crypto.randomBytes(4).toString("hex")}`,
-            source: String(e.source || ""),
-            target: String(e.target || ""),
-            label: String(e.label || "connects_to"),
-            source_origin: "ai-suggested" as const,
-          }));
-
-        res.json({
-          nodes,
-          edges,
-          reasoning: suggestions.reasoning || [],
-        });
-      } catch (parseErr) {
-        console.error("[ai-suggest] Failed to parse AI response:", stdout.slice(0, 500));
-        res.status(500).json({ message: "Failed to parse AI suggestions" });
-      }
-    });
+    stdout = await runClaude(prompt, { model: "haiku", timeoutMs: 300000 });
   } catch (err) {
-    console.error("[ai-suggest] Error:", err);
-    res.status(500).json({ message: "AI suggestion failed" });
+    console.error("[ai-suggest] claude -p failed:", (err as Error).message);
+    return res.status(500).json({ message: "AI suggestion failed", error: (err as Error).message.slice(0, 200) });
+  }
+
+  if (!stdout.trim()) {
+    return res.status(500).json({ message: "AI returned empty response" });
+  }
+
+  try {
+    let jsonStr = stdout.trim();
+    const jsonMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (jsonMatch) jsonStr = jsonMatch[1].trim();
+
+    const suggestions = JSON.parse(jsonStr);
+
+    // Build dedup sets from existing data
+    const existingNodeLabels = new Set([
+      ...existingEntities.map((e) => e.name.toLowerCase()),
+      ...existingCustomNodes.map((n) => n.label.toLowerCase()),
+    ]);
+    const existingEdgeKeys = new Set([
+      ...storage.getAllRelationships().map((r) => {
+        const src = existingEntities.find((e) => e.id === r.sourceId)?.name || r.sourceId;
+        const tgt = existingEntities.find((e) => e.id === r.targetId)?.name || r.targetId;
+        return `${src.toLowerCase()}::${tgt.toLowerCase()}::${r.relation}`;
+      }),
+      ...storage.getCustomEdges().map((e) => {
+        const srcNode = existingCustomNodes.find((n) => n.id === e.source);
+        const srcEntity = existingEntities.find((en) => en.id === e.source);
+        const tgtNode = existingCustomNodes.find((n) => n.id === e.target);
+        const tgtEntity = existingEntities.find((en) => en.id === e.target);
+        const srcName = srcNode?.label || srcEntity?.name || e.source;
+        const tgtName = tgtNode?.label || tgtEntity?.name || e.target;
+        return `${srcName.toLowerCase()}::${tgtName.toLowerCase()}::${e.label}`;
+      }),
+    ]);
+
+    // Filter out duplicates
+    const nodes: CustomNode[] = (suggestions.nodes || [])
+      .filter((n: any) => {
+        const label = String(n.label || "").toLowerCase();
+        if (existingNodeLabels.has(label)) {
+          console.log(`[ai-suggest] Skipping duplicate node: ${n.label}`);
+          return false;
+        }
+        return label.length > 0;
+      })
+      .map((n: any) => ({
+        id: `ai-${n.id || crypto.randomBytes(4).toString("hex")}`,
+        subType: (["database", "api", "service", "cicd", "deploy", "queue", "cache", "other"].includes(n.subType) ? n.subType : "other") as CustomNodeSubType,
+        label: String(n.label || "Unknown"),
+        description: n.description ? String(n.description) : undefined,
+        color: n.color ? String(n.color) : undefined,
+        source: "ai-suggested" as const,
+      }));
+
+    const edges: CustomEdge[] = (suggestions.edges || [])
+      .filter((e: any) => {
+        if (!e.source || !e.target || !e.label) return false;
+        if (String(e.source) === String(e.target)) return false; // no self-edges
+        const key = `${String(e.source).toLowerCase()}::${String(e.target).toLowerCase()}::${String(e.label)}`;
+        if (existingEdgeKeys.has(key)) {
+          console.log(`[ai-suggest] Skipping duplicate edge: ${e.source} -> ${e.target} [${e.label}]`);
+          return false;
+        }
+        return true;
+      })
+      .map((e: any) => ({
+        id: `ai-edge-${crypto.randomBytes(4).toString("hex")}`,
+        source: String(e.source || ""),
+        target: String(e.target || ""),
+        label: String(e.label || "connects_to"),
+        source_origin: "ai-suggested" as const,
+      }));
+
+    res.json({
+      nodes,
+      edges,
+      reasoning: suggestions.reasoning || [],
+    });
+  } catch (parseErr) {
+    console.error("[ai-suggest] Failed to parse AI response:", stdout.slice(0, 500));
+    res.status(500).json({ message: "Failed to parse AI suggestions" });
   }
 });
 

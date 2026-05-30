@@ -5,6 +5,7 @@ import type {
   SessionHealth, HealthAnalytics, StaleAnalytics,
 } from "@shared/types";
 import { getPricing, computeCost } from "./pricing";
+import { extractTurnsFromString } from "./turn-extractor";
 
 // Alias for backward compat within this file
 const calcCost = computeCost;
@@ -30,102 +31,59 @@ function analyzeSession(session: SessionData): RawAnalytics | null {
   let totalCacheRead = 0;
   let totalCacheCreation = 0;
 
+  let content: string;
   try {
-    const content = fs.readFileSync(session.filePath, "utf-8");
-    let pos = 0;
-
-    while (pos < content.length) {
-      const nextNewline = content.indexOf("\n", pos);
-      const lineEnd = nextNewline === -1 ? content.length : nextNewline;
-      const trimmed = content.slice(pos, lineEnd).trim();
-      pos = lineEnd + 1;
-      if (!trimmed) continue;
-
-      try {
-        const record = JSON.parse(trimmed);
-        const ts = record.timestamp || "";
-
-        if (record.type === "assistant") {
-          const msg = record.message;
-          if (!msg || typeof msg !== "object") continue;
-
-          // Token usage
-          const usage = msg.usage;
-          if (usage) {
-            const model = msg.model || "unknown";
-            modelsSet.add(model);
-            const inp = usage.input_tokens || 0;
-            const out = usage.output_tokens || 0;
-            const cr = usage.cache_read_input_tokens || 0;
-            const cc = usage.cache_creation_input_tokens || 0;
-
-            totalInput += inp;
-            totalOutput += out;
-            totalCacheRead += cr;
-            totalCacheCreation += cc;
-
-            if (!modelBreakdown[model]) {
-              modelBreakdown[model] = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0 };
-            }
-            modelBreakdown[model].input += inp;
-            modelBreakdown[model].output += out;
-            modelBreakdown[model].cacheRead += cr;
-            modelBreakdown[model].cacheCreation += cc;
-          }
-
-          // Tool use blocks — extract file paths and tool names
-          const msgContent = msg.content;
-          if (Array.isArray(msgContent)) {
-            for (const item of msgContent) {
-              if (item == null || typeof item !== "object") continue;
-              if (item.type === "tool_use") {
-                totalToolCalls++;
-                const toolName = (item.name || "").toLowerCase();
-                const input = item.input as Record<string, unknown> | undefined;
-                if (input) {
-                  const fp = (input.file_path || input.path || "") as string;
-                  if (fp && (toolName === "read" || toolName === "write" || toolName === "edit" || toolName === "glob")) {
-                    const existing = fileOps.get(fp) || { read: 0, write: 0, edit: 0, lastTs: "" };
-                    if (toolName === "read") existing.read++;
-                    else if (toolName === "write") existing.write++;
-                    else if (toolName === "edit") existing.edit++;
-                    if (ts > existing.lastTs) existing.lastTs = ts;
-                    fileOps.set(fp, existing);
-
-                    // Detect retries: same file edited within 60 seconds
-                    if (toolName === "edit" || toolName === "write") {
-                      const now = new Date(ts).getTime();
-                      if (fp === lastEditFile && now - lastEditTs < 60000) {
-                        retries++;
-                      }
-                      lastEditFile = fp;
-                      lastEditTs = now;
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } else if (record.type === "user") {
-          // Check for tool_result errors
-          const msg = record.message;
-          if (!msg || typeof msg !== "object") continue;
-          const msgContent = msg.content;
-          if (Array.isArray(msgContent)) {
-            for (const item of msgContent) {
-              if (item == null || typeof item !== "object") continue;
-              if (item.type === "tool_result" && item.is_error) {
-                toolErrors++;
-              }
-            }
-          }
-        }
-      } catch {
-        // Malformed line
-      }
-    }
+    content = fs.readFileSync(session.filePath, "utf-8");
   } catch {
     return null;
+  }
+
+  // Single shared parse (same per-record logic as every other analytics module).
+  const { turns, errors } = extractTurnsFromString(content);
+  toolErrors = errors.length;
+
+  for (const turn of turns) {
+    // Token usage by model
+    const model = turn.model || "unknown";
+    modelsSet.add(model);
+    totalInput += turn.inputTokens;
+    totalOutput += turn.outputTokens;
+    totalCacheRead += turn.cacheReadTokens;
+    totalCacheCreation += turn.cacheCreationTokens;
+    if (!modelBreakdown[model]) {
+      modelBreakdown[model] = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0 };
+    }
+    modelBreakdown[model].input += turn.inputTokens;
+    modelBreakdown[model].output += turn.outputTokens;
+    modelBreakdown[model].cacheRead += turn.cacheReadTokens;
+    modelBreakdown[model].cacheCreation += turn.cacheCreationTokens;
+
+    // Tool use blocks — file paths + retry detection (in document order)
+    const ts = turn.ts;
+    for (const tu of turn.toolUses) {
+      totalToolCalls++;
+      const toolName = (tu.name || "").toLowerCase();
+      const input = tu.input;
+      const fp = (input.file_path || input.path || "") as string;
+      if (fp && (toolName === "read" || toolName === "write" || toolName === "edit" || toolName === "glob")) {
+        const existing = fileOps.get(fp) || { read: 0, write: 0, edit: 0, lastTs: "" };
+        if (toolName === "read") existing.read++;
+        else if (toolName === "write") existing.write++;
+        else if (toolName === "edit") existing.edit++;
+        if (ts > existing.lastTs) existing.lastTs = ts;
+        fileOps.set(fp, existing);
+
+        // Detect retries: same file edited within 60 seconds
+        if (toolName === "edit" || toolName === "write") {
+          const now = new Date(ts).getTime();
+          if (fp === lastEditFile && now - lastEditTs < 60000) {
+            retries++;
+          }
+          lastEditFile = fp;
+          lastEditTs = now;
+        }
+      }
+    }
   }
 
   // Calculate costs per model
