@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.27] - 2026-05-30
+
+Pre-completion code-review hardening pass (consolidates v2.6.20–v2.6.27).
+
+### Changed
+- Live-session details now come from a single cached forward pass over each session's JSONL, with incremental byte-offset reads for still-growing sessions instead of re-reading the whole file. Per-file caches added to the agent, session, and historical-limit scanners; the projects directory is listed once per scan instead of once per session (N+1 fix).
+- Shared-type / DRY consolidation: the `NodeOrigin` union, the inferred-projects response type, and the dashboard-analytics types (incl. `BurnCategory`) now live in `shared/types.ts`; a single `checkClaudeAvailable()` and shared `extractTurnsFromString` / `runClaude` helpers replace logic that had been duplicated across routes and scanners.
+
+### Fixed
+- Session pagination pager now renders for users with more than 50 sessions — the client had been reading a flat field the server nests under `pagination` — and shows a "showing the first N of M sessions" notice when the list is capped.
+- Orphaned-agent sessions no longer report `hasHistory` as undefined.
+- Deep-search now keys its cache on a session fingerprint so new sessions invalidate stale results, and streams matches with early-exit instead of buffering whole files.
+
+### Added
+- Unit-test coverage for the live-scanner, deep-search, validation, session-delegation, and session-analytics seams (2300+ tests total).
+
+## [2.6.19] - 2026-05-29
+
+Pre-completion review batches 1–3 (v2.6.17–v2.6.19).
+
+### Security
+- Localhost trust-boundary middleware: Host/Origin validation plus a CSRF guard on mutating requests. Extra hosts can be allowed via `COMMAND_CENTER_ALLOWED_HOSTS` when intentionally exposing on a LAN.
+- Markdown writes restricted to `.md` files under the home directory; settings-scan paths confined under home.
+- Sanitized graph custom-node `<style>` content (XSS), locked the Vite dev server's `allowedHosts` to localhost, and sanitized the win32 session-delegation spawn `cwd`.
+
+### Fixed
+- Process-level crash handlers and guarded startup so a scanner error can't take the server down; `headersSent` guards on the live compact/close and ai-suggest response paths; Windows project-memory key mismatch in the projects scanner.
+- Deep-search `dateTo` is now inclusive to end-of-day; `PATCH /api/markdown/:id/meta` validates its body with a zod schema; the Telegram delegation bridge URL is configurable via `TELEGRAM_BRIDGE_URL`.
+
+## [2.6.16] - 2026-05-29
+
+Live-view enhancements and accurate session cost (v2.6.5–v2.6.16).
+
+### Added
+- Live session controls (compact / end session) and full message-content search across a session (v2.6.11). Ending a session also closes its terminal window (v2.6.14).
+- "What is this?" explainer when you click a session's BACKGROUND badge (v2.6.12).
+- "Open terminal (resume)" button on Message History rows (v2.6.15) and on the project detail page, inline beside the project name (v2.6.7–v2.6.8).
+
+### Fixed
+- Live session cost is now accurate — the correct per-model rate applied to the whole transcript (fixes the reduced-Opus pricing regression) (v2.6.16).
+- Live context % matches the terminal's usable-budget meter, including 1M-token Opus context detection (v2.6.9–v2.6.10); the permission badge reflects each session's real mode (v2.6.13).
+- Default `document.title` to "Claude Command Center" (v2.6.5); shim `import.meta.url` in the CJS build bundle so production builds run (v2.6.6).
+
+### Security
+- Bumped `qs` to patch a known advisory in the npm dependency group.
+
+## [2.6.0] - 2026-05-11
+
+Inferred-project support (v2.6.0–v2.6.4).
+
+### Added
+- Sessions whose owning project can be inferred now get a chip, a filter, and a group-by view; the project-detail Sessions tab includes inferred sessions, each with a cwd-aware Resume button.
+
+### Fixed
+- Case-folded project-name matching plus cache-version invalidation (v2.6.1); Resume hooks hoisted above early returns (v2.6.4).
+
+## [2.5.0] - 2026-04-25
+
+### Added
+- Project scripts: `.py` files are surfaced inside their owning project.
+
+### Changed
+- Resume button is now cwd-aware and session cards show a project chip (v2.5.1).
+
+### Security
+- Bumped `postcss` 8.5.8 → 8.5.14 for CVE-2026-41305 (v2.5.2).
+
+## [2.4.0] - 2026-04-21
+
+### Added
+- Claude Code Help tab and a plan-usage glance popover.
+
+## [2.3.0] - 2026-04-16
+
+### Added
+- Multi-user Billing polish: percentile view, fallback ceiling, and pay-as-you-go API mode.
+
+## [2.2.0] - 2026-04-16
+
+### Added
+- Personal rate-limit ceiling derived from the user's own past limit events, plus Help Center hardening.
+
+## [2.1.0] - 2026-04-16
+
+### Added
+- Limit-buildup chart, info tooltips, sidebar plan pill, and inline error help.
+
+## [2.0.0] - 2026-04-16
+
+### Added
+- **Plan-aware billing** (breaking): session and weekly usage bars, a peak-hour heatmap, and a refreshed plan catalog — the basis for the Analytics/Billing tab's personal-ceiling model.
+
 ## [1.27.0] - 2026-04-13
 
 ### Added
