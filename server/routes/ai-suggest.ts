@@ -1,29 +1,14 @@
 import { Router, type Request, type Response } from "express";
 import { storage } from "../storage";
-import { spawn, execSync } from "child_process";
+import { spawn } from "child_process";
 import path from "path";
 import os from "os";
 import fs from "fs";
 import type { CustomNode, CustomEdge, CustomNodeSubType } from "@shared/types";
 import crypto from "crypto";
+import { checkClaudeAvailable } from "../scanner/claude-runner";
 
 const router = Router();
-
-/** Check if claude CLI is available and authenticated */
-function checkClaudeCli(): { available: boolean; error?: string } {
-  try {
-    const env = { ...process.env };
-    delete env.CLAUDECODE;
-    execSync("claude --version", { env, stdio: "pipe", timeout: 5000 });
-    return { available: true };
-  } catch (err: any) {
-    const msg = err.message || "";
-    if (msg.includes("not found") || msg.includes("not recognized") || msg.includes("ENOENT")) {
-      return { available: false, error: "not_installed" };
-    }
-    return { available: false, error: "unknown" };
-  }
-}
 
 /** Gather context about the current ecosystem for the AI */
 function gatherContext(): string {
@@ -99,13 +84,13 @@ function gatherContext(): string {
 
 /** GET /api/graph/ai-suggest/status — Check if claude CLI is available */
 router.get("/api/graph/ai-suggest/status", (_req: Request, res: Response) => {
-  const result = checkClaudeCli();
+  const result = checkClaudeAvailable();
   res.json(result);
 });
 
 router.post("/api/graph/ai-suggest", async (req: Request, res: Response) => {
   // Check claude CLI first
-  const cliCheck = checkClaudeCli();
+  const cliCheck = checkClaudeAvailable();
   if (!cliCheck.available) {
     return res.status(503).json({
       message: "Claude CLI not available",

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { spawn, execSync } from "child_process";
+import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -12,6 +12,7 @@ import { summarizeSession, summarizeBatch } from "../scanner/session-summarizer"
 import { getSessionCost } from "../scanner/session-analytics";
 import { getSessionCommits } from "../scanner/commit-linker";
 import { getSessionDiffs } from "../scanner/session-diffs";
+import { checkClaudeAvailable } from "../scanner/claude-runner";
 import { INFERRED_PROJECT_NONE } from "@shared/types";
 import { getFileTimeline } from "../scanner/file-timeline";
 import { runNLQuery } from "../scanner/nl-query";
@@ -22,18 +23,6 @@ import { delegateToTerminal, delegateToTelegram, delegateToVoice, buildContextPr
 import { storage } from "../storage";
 
 const router = Router();
-
-/** Check if claude CLI is available */
-function isClaudeAvailable(): boolean {
-  try {
-    const env = { ...process.env };
-    delete (env as Record<string, string | undefined>).CLAUDECODE;
-    execSync("claude --version", { env, stdio: "pipe", timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function ensureTrashDir(): void {
   if (!fs.existsSync(TRASH_DIR)) fs.mkdirSync(TRASH_DIR, { recursive: true });
@@ -252,7 +241,7 @@ router.get("/api/sessions/search", async (req: Request, res: Response) => {
 /** POST /api/sessions/summarize-batch — Summarize sessions (mode: all, top10, pinned) */
 const MAX_BATCH_SUMMARIZE = 10;
 router.post("/api/sessions/summarize-batch", async (req: Request, res: Response) => {
-  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for AI summarization" });
+  if (!checkClaudeAvailable().available) return res.status(503).json({ message: "Claude Code CLI not installed — required for AI summarization" });
   const modeInput = (req.body as { mode?: unknown }).mode;
   const mode = modeInput === "top10" || modeInput === "pinned" ? modeInput : "all";
   try {
@@ -342,7 +331,7 @@ router.get("/api/sessions/file-timeline", (req: Request, res: Response) => {
 
 /** POST /api/sessions/nl-query — Natural language query */
 router.post("/api/sessions/nl-query", async (req: Request, res: Response) => {
-  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for natural language queries" });
+  if (!checkClaudeAvailable().available) return res.status(503).json({ message: "Claude Code CLI not installed — required for natural language queries" });
   const question = (req.body as { question?: string })?.question;
   if (!question || question.length < 3) return res.status(400).json({ message: "question is required (min 3 chars)" });
   try {
@@ -372,7 +361,7 @@ router.get("/api/sessions/decisions", (req: Request, res: Response) => {
 
 /** POST /api/sessions/decisions/extract/:id — Extract decisions from a session */
 router.post("/api/sessions/decisions/extract/:id", async (req: Request, res: Response) => {
-  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for decision extraction" });
+  if (!checkClaudeAvailable().available) return res.status(503).json({ message: "Claude Code CLI not installed — required for decision extraction" });
   const idResult = SessionIdSchema.safeParse(String(req.params.id));
   if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
   const session = getCachedSessions().find(s => s.id === idResult.data);
@@ -649,7 +638,7 @@ router.get("/api/sessions/:id/summary", (req: Request, res: Response) => {
 
 /** POST /api/sessions/:id/summarize — Generate summary for a session */
 router.post("/api/sessions/:id/summarize", async (req: Request, res: Response) => {
-  if (!isClaudeAvailable()) return res.status(503).json({ message: "Claude Code CLI not installed — required for AI summarization" });
+  if (!checkClaudeAvailable().available) return res.status(503).json({ message: "Claude Code CLI not installed — required for AI summarization" });
   const idResult = SessionIdSchema.safeParse(req.params.id);
   if (!idResult.success) return res.status(400).json({ message: "Invalid session ID format" });
 

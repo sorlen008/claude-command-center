@@ -2,7 +2,28 @@
  * Shared utility for running `claude -p` as a subprocess.
  * Used by: session-summarizer, nl-query, decision-extractor, ai-suggest
  */
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
+
+/**
+ * Whether the `claude` CLI is installed and runnable. Single source of truth for
+ * the availability pre-check every `claude -p` route must do (CLAUDE.md rule 4),
+ * so routes can't drift on how they detect a missing CLI. `error` distinguishes
+ * a missing binary from an unknown failure for callers that surface it.
+ */
+export function checkClaudeAvailable(): { available: boolean; error?: "not_installed" | "unknown" } {
+  try {
+    const env = { ...process.env } as Record<string, string | undefined>;
+    delete env.CLAUDECODE;
+    execSync("claude --version", { env, stdio: "pipe", timeout: 5000 });
+    return { available: true };
+  } catch (err) {
+    const msg = (err as Error).message || "";
+    if (msg.includes("not found") || msg.includes("not recognized") || msg.includes("ENOENT")) {
+      return { available: false, error: "not_installed" };
+    }
+    return { available: false, error: "unknown" };
+  }
+}
 
 interface RunClaudeOpts {
   model?: string;

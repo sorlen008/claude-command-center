@@ -143,7 +143,7 @@ describe("Graceful degradation without Claude CLI", () => {
     // The summarizer's runClaude function rejects on non-zero exit or error
     // Routes check isClaudeAvailable() before calling summarizer
     const routeContent = fs.readFileSync(path.join(ROOT, "server/routes/sessions.ts"), "utf-8");
-    expect(routeContent).toContain("isClaudeAvailable()");
+    expect(routeContent).toContain("checkClaudeAvailable()");
   });
 
   it("isClaudeAvailable check exists before summarize", () => {
@@ -158,7 +158,7 @@ describe("Graceful degradation without Claude CLI", () => {
     for (const [name, idx] of [["summarize", summarizeIdx], ["batch", batchIdx], ["nl-query", nlIdx], ["decisions", decisionIdx]]) {
       expect(idx, `${name} route not found`).toBeGreaterThan(-1);
       const snippet = content.slice(idx, idx + 300);
-      expect(snippet, `${name} route missing isClaudeAvailable check`).toContain("isClaudeAvailable");
+      expect(snippet, `${name} route missing checkClaudeAvailable check`).toContain("checkClaudeAvailable");
     }
   });
 });
