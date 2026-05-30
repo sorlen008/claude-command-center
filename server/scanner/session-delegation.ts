@@ -59,8 +59,8 @@ export function buildContextPrompt(session: SessionData): string {
   return parts.join("\n");
 }
 
-/** Sanitize a path for safe shell interpolation */
-function sanitizePath(p: string): string {
+/** Sanitize a path for safe shell interpolation. Exported for unit testing. */
+export function sanitizePath(p: string): string {
   // Remove any shell metacharacters except path separators, spaces, dots, hyphens
   return p.replace(/[^a-zA-Z0-9\s/\\:._\-]/g, "");
 }

@@ -117,7 +117,7 @@ router.post("/api/live/compact", (req: Request, res: Response) => {
 // Shells we're willing to kill to close an interactive session's terminal
 // window/tab. We deliberately do NOT kill terminal-host apps (WindowsTerminal,
 // conhost, Terminal, iTerm2, gnome-terminal) — those host other tabs/windows.
-const SHELL_NAMES = new Set([
+export const SHELL_NAMES = new Set([
   "cmd", "powershell", "pwsh", "bash", "wsl", "sh", "zsh", "fish", "dash", "ash", "nu",
   "cmd.exe", "powershell.exe", "pwsh.exe", "bash.exe", "wsl.exe",
 ]);

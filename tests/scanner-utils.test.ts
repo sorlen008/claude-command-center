@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { entityId, normPath, decodeProjectKey, extractText, readHead, readTailTs } from "../server/scanner/utils";
+import { entityId, normPath, decodeProjectKey, extractText, extractMessageText, readHead, readTailTs } from "../server/scanner/utils";
 
 describe("entityId", () => {
   it("returns a 16-char hex string", () => {
@@ -92,6 +92,45 @@ describe("extractText", () => {
 
   it("handles empty array", () => {
     expect(extractText([])).toBe("");
+  });
+});
+
+describe("extractMessageText", () => {
+  it("returns string content directly", () => {
+    expect(extractMessageText("hello world")).toBe("hello world");
+  });
+
+  it("joins text blocks with newlines", () => {
+    const blocks = [
+      { type: "text", text: "first" },
+      { type: "text", text: "second" },
+    ];
+    expect(extractMessageText(blocks)).toBe("first\nsecond");
+  });
+
+  it("ignores tool_use and other non-text blocks", () => {
+    const blocks = [
+      { type: "text", text: "keep" },
+      { type: "tool_use", id: "abc", name: "Read" },
+      { type: "image", source: {} },
+    ];
+    expect(extractMessageText(blocks)).toBe("keep");
+  });
+
+  it("treats tool_result blocks the same whether or not skipToolResults is set", () => {
+    const blocks = [
+      { type: "text", text: "answer" },
+      { type: "tool_result", content: "ignored regardless" },
+    ];
+    expect(extractMessageText(blocks, false)).toBe("answer");
+    expect(extractMessageText(blocks, true)).toBe("answer");
+  });
+
+  it("returns empty string for null, undefined, numbers, and empty arrays", () => {
+    expect(extractMessageText(null)).toBe("");
+    expect(extractMessageText(undefined)).toBe("");
+    expect(extractMessageText(42)).toBe("");
+    expect(extractMessageText([])).toBe("");
   });
 });
 

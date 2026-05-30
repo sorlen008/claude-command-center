@@ -120,8 +120,9 @@ function readHeadLines(filePath: string, chunkSize = 32768): string[] {
   }
 }
 
-/** Map a raw Claude Code permission-mode value to the badge variant. */
-function mapPermissionMode(raw: string | undefined): ActiveSession["permissionMode"] | undefined {
+/** Map a raw Claude Code permission-mode value to the badge variant.
+ *  Exported for unit testing. */
+export function mapPermissionMode(raw: string | undefined): ActiveSession["permissionMode"] | undefined {
   switch (raw) {
     case "bypassPermissions": return "bypass";
     case "acceptEdits": return "auto-accept";
@@ -195,7 +196,10 @@ function modelFamily(model: string): string {
   return m || "unknown";
 }
 
-function getSessionDetails(filePath: string): SessionDetails {
+/** Extract per-session context %, last human message, message count, cost, and
+ *  permission mode from a session JSONL. Exported for unit testing — this is the
+ *  stable contract the live-scanner perf refactor must preserve. */
+export function getSessionDetails(filePath: string): SessionDetails {
   let contextUsage: ActiveSession["contextUsage"];
   let lastMessage: string | undefined;
   let totalInputTokens = 0;

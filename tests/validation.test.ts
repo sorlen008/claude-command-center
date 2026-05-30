@@ -6,6 +6,7 @@ import {
   IdsArraySchema,
   SessionListSchema,
   AgentExecListSchema,
+  DeepSearchSchema,
   DiscoveryQuerySchema,
   qstr,
   validateMarkdownPath,
@@ -114,6 +115,43 @@ describe("AgentExecListSchema", () => {
 
   it("rejects limit > 1000", () => {
     expect(AgentExecListSchema.safeParse({ limit: 2000 }).success).toBe(false);
+  });
+});
+
+describe("DeepSearchSchema", () => {
+  it("requires a non-empty q", () => {
+    expect(DeepSearchSchema.safeParse({}).success).toBe(false);
+    expect(DeepSearchSchema.safeParse({ q: "" }).success).toBe(false);
+  });
+
+  it("rejects q longer than 500 chars", () => {
+    expect(DeepSearchSchema.safeParse({ q: "x".repeat(501) }).success).toBe(false);
+  });
+
+  it("defaults field to 'all' and limit to 50", () => {
+    const result = DeepSearchSchema.safeParse({ q: "hello" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.field).toBe("all");
+      expect(result.data.limit).toBe(50);
+    }
+  });
+
+  it("rejects an invalid field enum value", () => {
+    expect(DeepSearchSchema.safeParse({ q: "hi", field: "system" }).success).toBe(false);
+  });
+
+  it("coerces limit from a string and clamps to 1..100", () => {
+    const ok = DeepSearchSchema.safeParse({ q: "hi", limit: "25" });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data.limit).toBe(25);
+    expect(DeepSearchSchema.safeParse({ q: "hi", limit: 0 }).success).toBe(false);
+    expect(DeepSearchSchema.safeParse({ q: "hi", limit: 101 }).success).toBe(false);
+  });
+
+  it("accepts optional date bounds within the 30-char cap", () => {
+    expect(DeepSearchSchema.safeParse({ q: "hi", dateFrom: "2026-05-01", dateTo: "2026-05-30" }).success).toBe(true);
+    expect(DeepSearchSchema.safeParse({ q: "hi", dateTo: "x".repeat(31) }).success).toBe(false);
   });
 });
 
