@@ -1,29 +1,11 @@
 import { getPricing, computeCost } from "./pricing";
 import { extractTurns, type RawTurn, type RawToolUse, type RawErrorEvent } from "./turn-extractor";
+import { BURN_CATEGORIES, type BurnCategory } from "@shared/types";
 
-// Categories the classifier can assign to a single assistant turn.
-export type BurnCategory =
-  | "Coding"
-  | "Testing"
-  | "Git Ops"
-  | "Build"
-  | "Delegation"
-  | "Planning"
-  | "Exploration"
-  | "Conversation"
-  | "General";
-
-export const BURN_CATEGORIES: BurnCategory[] = [
-  "Coding",
-  "Testing",
-  "Git Ops",
-  "Build",
-  "Delegation",
-  "Planning",
-  "Exploration",
-  "Conversation",
-  "General",
-];
+// Burn categories moved to shared/types.ts (shared with the client). Re-exported
+// here for back-compat with existing server importers.
+export { BURN_CATEGORIES };
+export type { BurnCategory };
 
 export type BurnReason = "none" | "repeat_edit" | "error_after" | "repeat_test";
 

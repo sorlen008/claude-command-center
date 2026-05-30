@@ -999,3 +999,128 @@ export interface CostInsight {
   metric?: number;
   baseline?: number;
 }
+
+// ---- Burn / dashboard analytics ----
+// Shared so the server builder (scanner/dashboard-analytics.ts) and the client
+// Analytics tab (pages/stats.tsx) reference one definition instead of drifting
+// copies — previously the client's ActivityRow.category was loosely `string`.
+
+/** Category the burn classifier assigns to a single assistant turn. */
+export type BurnCategory =
+  | "Coding"
+  | "Testing"
+  | "Git Ops"
+  | "Build"
+  | "Delegation"
+  | "Planning"
+  | "Exploration"
+  | "Conversation"
+  | "General";
+
+export const BURN_CATEGORIES: BurnCategory[] = [
+  "Coding",
+  "Testing",
+  "Git Ops",
+  "Build",
+  "Delegation",
+  "Planning",
+  "Exploration",
+  "Conversation",
+  "General",
+];
+
+export type TimeRange = "today" | "7d" | "30d" | "month" | "all";
+
+export interface DashboardHeader {
+  range: TimeRange;
+  rangeLabel: string;
+  rangeStartIso: string | null;
+  totalCost: number;
+  activeTokens: number;
+  cachedTokens: number;
+  totalTurns: number;
+  totalSessions: number;
+  cacheHitRatePct: number;
+}
+
+export interface DailyBar {
+  date: string;
+  cost: number;
+  activeTokens: number;
+  cachedTokens: number;
+  burnedCost: number;
+  sessions: number;
+}
+
+export interface ProjectRow {
+  project: string;
+  projectLabel: string;
+  cost: number;
+  sessions: number;
+  turns: number;
+}
+
+export interface ActivityRow {
+  category: BurnCategory;
+  cost: number;
+  turns: number;
+  tokens: number;
+  oneShotRatePct: number;
+  burnedCost: number;
+}
+
+export interface ModelRow {
+  model: string;
+  family: "opus" | "sonnet" | "haiku" | "other";
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  turns: number;
+}
+
+export interface ToolCountRow {
+  name: string;
+  count: number;
+}
+
+export interface BashCommandRow {
+  command: string;
+  count: number;
+}
+
+export interface McpServerRow {
+  server: string;
+  count: number;
+  tools: string[];
+}
+
+export interface SubagentTypeRow {
+  subagentType: string;
+  count: number;
+}
+
+export interface BackgroundActivity {
+  subagentSessions: number;
+  subagentTurns: number;
+  subagentCost: number;
+  subagentTokens: number;
+  hookSessions: number;
+  hookCost: number;
+  subagentTypes: SubagentTypeRow[];
+}
+
+export interface DashboardAnalytics {
+  header: DashboardHeader;
+  byDay: DailyBar[];
+  byProject: ProjectRow[];
+  byActivity: ActivityRow[];
+  byModel: ModelRow[];
+  coreTools: ToolCountRow[];
+  bashCommands: BashCommandRow[];
+  mcpServers: McpServerRow[];
+  background: BackgroundActivity;
+  burnPct: number;
+  oneShotRatePct: number;
+  durationMs: number;
+}

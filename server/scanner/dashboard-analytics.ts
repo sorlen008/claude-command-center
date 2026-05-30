@@ -5,101 +5,36 @@ import { extractTurns, classifyOrigin, type RawToolUse } from "./turn-extractor"
 import { classifyTurn, buildBurnTurns, BURN_CATEGORIES, type BurnCategory } from "./burn-analytics";
 import { decodeProjectKey } from "./utils";
 
-export type TimeRange = "today" | "7d" | "30d" | "month" | "all";
-
-export interface DashboardHeader {
-  range: TimeRange;
-  rangeLabel: string;
-  rangeStartIso: string | null;
-  totalCost: number;
-  activeTokens: number;
-  cachedTokens: number;
-  totalTurns: number;
-  totalSessions: number;
-  cacheHitRatePct: number;
-}
-
-export interface DailyBar {
-  date: string;
-  cost: number;
-  activeTokens: number;
-  cachedTokens: number;
-  burnedCost: number;
-  sessions: number;
-}
-
-export interface ProjectRow {
-  project: string;
-  projectLabel: string;
-  cost: number;
-  sessions: number;
-  turns: number;
-}
-
-export interface ActivityRow {
-  category: BurnCategory;
-  cost: number;
-  turns: number;
-  tokens: number;
-  oneShotRatePct: number;
-  burnedCost: number;
-}
-
-export interface ModelRow {
-  model: string;
-  family: "opus" | "sonnet" | "haiku" | "other";
-  cost: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  turns: number;
-}
-
-export interface ToolCountRow {
-  name: string;
-  count: number;
-}
-
-export interface BashCommandRow {
-  command: string;
-  count: number;
-}
-
-export interface McpServerRow {
-  server: string;
-  count: number;
-  tools: string[];
-}
-
-export interface SubagentTypeRow {
-  subagentType: string;
-  count: number;
-}
-
-export interface BackgroundActivity {
-  subagentSessions: number;
-  subagentTurns: number;
-  subagentCost: number;
-  subagentTokens: number;
-  hookSessions: number;
-  hookCost: number;
-  subagentTypes: SubagentTypeRow[];
-}
-
-export interface DashboardAnalytics {
-  header: DashboardHeader;
-  byDay: DailyBar[];
-  byProject: ProjectRow[];
-  byActivity: ActivityRow[];
-  byModel: ModelRow[];
-  coreTools: ToolCountRow[];
-  bashCommands: BashCommandRow[];
-  mcpServers: McpServerRow[];
-  background: BackgroundActivity;
-  burnPct: number;
-  oneShotRatePct: number;
-  durationMs: number;
-}
+// Dashboard analytics types moved to shared/types.ts (shared with the client
+// Analytics tab). Re-exported below for the route and other server importers.
+import type {
+  TimeRange,
+  DashboardHeader,
+  DailyBar,
+  ProjectRow,
+  ActivityRow,
+  ModelRow,
+  ToolCountRow,
+  BashCommandRow,
+  McpServerRow,
+  SubagentTypeRow,
+  BackgroundActivity,
+  DashboardAnalytics,
+} from "@shared/types";
+export type {
+  TimeRange,
+  DashboardHeader,
+  DailyBar,
+  ProjectRow,
+  ActivityRow,
+  ModelRow,
+  ToolCountRow,
+  BashCommandRow,
+  McpServerRow,
+  SubagentTypeRow,
+  BackgroundActivity,
+  DashboardAnalytics,
+};
 
 export interface SessionMeta {
   id: string;

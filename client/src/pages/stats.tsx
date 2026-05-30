@@ -25,6 +25,10 @@ import { formatBytes, formatDayLabel, isToday, downloadCSV } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Download, RefreshCw, AlertCircle, Gauge, History, Wallet, Lightbulb, ArrowRight, Sprout, X } from "lucide-react";
 import { InfoTooltip } from "@/components/info-tooltip";
+import type {
+  TimeRange, DashboardHeader, DailyBar, ProjectRow, ActivityRow, ModelRow,
+  ToolCountRow, BashCommandRow, McpServerRow, SubagentTypeRow, BackgroundActivity, DashboardAnalytics,
+} from "@shared/types";
 
 // ---- Types ----
 
@@ -170,103 +174,8 @@ const ERROR_STYLES: Record<string, { bg: string; border: string; text: string; i
   other: { bg: "bg-zinc-500/10", border: "border-zinc-500/30", text: "text-zinc-400", icon: AlertTriangle },
 };
 
-// ---- Dashboard types ----
-
-type TimeRange = "today" | "7d" | "30d" | "month" | "all";
-
-interface DashboardHeader {
-  range: TimeRange;
-  rangeLabel: string;
-  rangeStartIso: string | null;
-  totalCost: number;
-  activeTokens: number;
-  cachedTokens: number;
-  totalTurns: number;
-  totalSessions: number;
-  cacheHitRatePct: number;
-}
-
-interface DailyBar {
-  date: string;
-  cost: number;
-  activeTokens: number;
-  cachedTokens: number;
-  burnedCost: number;
-  sessions: number;
-}
-
-interface ProjectRow {
-  project: string;
-  projectLabel: string;
-  cost: number;
-  sessions: number;
-  turns: number;
-}
-
-interface ActivityRow {
-  category: string;
-  cost: number;
-  turns: number;
-  tokens: number;
-  oneShotRatePct: number;
-  burnedCost: number;
-}
-
-interface ModelRow {
-  model: string;
-  family: "opus" | "sonnet" | "haiku" | "other";
-  cost: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  turns: number;
-}
-
-interface ToolCountRow {
-  name: string;
-  count: number;
-}
-
-interface BashCommandRow {
-  command: string;
-  count: number;
-}
-
-interface McpServerRow {
-  server: string;
-  count: number;
-  tools: string[];
-}
-
-interface SubagentTypeRow {
-  subagentType: string;
-  count: number;
-}
-
-interface BackgroundActivity {
-  subagentSessions: number;
-  subagentTurns: number;
-  subagentCost: number;
-  subagentTokens: number;
-  hookSessions: number;
-  hookCost: number;
-  subagentTypes: SubagentTypeRow[];
-}
-
-interface DashboardAnalytics {
-  header: DashboardHeader;
-  byDay: DailyBar[];
-  byProject: ProjectRow[];
-  byActivity: ActivityRow[];
-  byModel: ModelRow[];
-  coreTools: ToolCountRow[];
-  bashCommands: BashCommandRow[];
-  mcpServers: McpServerRow[];
-  background: BackgroundActivity;
-  burnPct: number;
-  oneShotRatePct: number;
-  durationMs: number;
-}
+// Dashboard analytics types now live in shared/types.ts (imported above) so the
+// client and server share one definition instead of drifting copies.
 
 // ---- Shared components ----
 
