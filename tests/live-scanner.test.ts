@@ -147,6 +147,39 @@ describe("getSessionDetails — permissionMode", () => {
   });
 });
 
+describe("getSessionDetails — incremental parsing", () => {
+  it("picks up records appended to a growing session", () => {
+    const fp = writeJsonl([user("first question here"), asst({ input: 100 })]);
+    const d1 = getSessionDetails(fp);
+    expect(d1.messageCount).toBe(1);
+    expect(d1.lastMessage).toBe("first question here");
+
+    fs.appendFileSync(
+      fp,
+      JSON.stringify(user("second question here")) + "\n" + JSON.stringify(asst({ input: 200 })) + "\n",
+    );
+    const d2 = getSessionDetails(fp);
+    expect(d2.messageCount).toBe(2); // both assistant records counted across reads
+    expect(d2.lastMessage).toBe("second question here"); // newest human message wins
+  });
+
+  it("re-parses from scratch when a session is rewritten smaller (e.g. compaction)", () => {
+    const fp = writeJsonl([
+      user("x".repeat(500)),
+      asst({ input: 100 }),
+      user("y".repeat(500)),
+      asst({ input: 200 }),
+    ]);
+    expect(getSessionDetails(fp).messageCount).toBe(2);
+
+    // Compaction rewrites the transcript shorter — counts must reset, not accumulate.
+    fs.writeFileSync(fp, JSON.stringify(user("short rewrite msg")) + "\n" + JSON.stringify(asst({ input: 50 })) + "\n");
+    const d = getSessionDetails(fp);
+    expect(d.messageCount).toBe(1);
+    expect(d.lastMessage).toBe("short rewrite msg");
+  });
+});
+
 describe("getSessionDetails — missing file", () => {
   it("degrades to zeros with no contextUsage or lastMessage", () => {
     const d = getSessionDetails(path.join(tmpRoot, "does-not-exist.jsonl"));

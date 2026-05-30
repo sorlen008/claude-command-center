@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { CLAUDE_DIR, dirExists, safeReadJson, readHead, extractText, normPath } from "./utils";
+import { CLAUDE_DIR, dirExists, safeReadJson, readHead, normPath } from "./utils";
 import { getCachedExecutions } from "./agent-scanner";
 import { getCachedSessions } from "./session-scanner";
 import { storage } from "../storage";
@@ -64,60 +64,17 @@ function getGitBranch(cwd: string): string | undefined {
 import { getPricing as getModelPricingShared, getMaxTokens, getUsableContext, computeCost } from "./pricing";
 
 /** Find the session JSONL file across all project dirs by exact session-id match.
+ *  `projDirNames` is listed once per getLiveData() call and passed in, so this
+ *  doesn't re-read the projects directory per session (N+1).
  *  NOTE: a most-recently-modified "stale fallback" was deliberately REMOVED in
  *  v1.21.0 (commit ec948e1) because it matched the wrong session after context
  *  compaction. Do not reinstate it — return null on no exact match. */
-function findSessionFile(sessionId: string, projectsDir: string): string | null {
-  if (!dirExists(projectsDir)) return null;
-  try {
-    const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-    for (const dir of dirs) {
-      if (!dir.isDirectory()) continue;
-      const projectPath = normPath(projectsDir, dir.name);
-      const exactPath = normPath(projectPath, `${sessionId}.jsonl`);
-      if (fs.existsSync(exactPath)) return exactPath;
-    }
-  } catch {}
+function findSessionFile(sessionId: string, projectsDir: string, projDirNames: string[]): string | null {
+  for (const name of projDirNames) {
+    const exactPath = normPath(projectsDir, name, `${sessionId}.jsonl`);
+    if (fs.existsSync(exactPath)) return exactPath;
+  }
   return null;
-}
-
-/** Read the tail of a JSONL file and return lines in reverse order */
-function readTailLines(filePath: string, chunkSize = 65536): string[] {
-  try {
-    const stat = fs.statSync(filePath);
-    const readSize = Math.min(chunkSize, stat.size);
-    const buf = Buffer.alloc(readSize);
-    let fd: number | null = null;
-    try {
-      fd = fs.openSync(filePath, "r");
-      fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
-    } finally {
-      if (fd !== null) try { fs.closeSync(fd); } catch {}
-    }
-    return buf.toString("utf-8").split("\n").reverse();
-  } catch {
-    return [];
-  }
-}
-
-/** Read the head of a JSONL file (forward order). Cheap — used to find the
- *  per-session permission mode, which is written near the session start. */
-function readHeadLines(filePath: string, chunkSize = 32768): string[] {
-  try {
-    const stat = fs.statSync(filePath);
-    const readSize = Math.min(chunkSize, stat.size);
-    const buf = Buffer.alloc(readSize);
-    let fd: number | null = null;
-    try {
-      fd = fs.openSync(filePath, "r");
-      fs.readSync(fd, buf, 0, readSize, 0);
-    } finally {
-      if (fd !== null) try { fs.closeSync(fd); } catch {}
-    }
-    return buf.toString("utf-8").split("\n");
-  } catch {
-    return [];
-  }
 }
 
 /** Map a raw Claude Code permission-mode value to the badge variant.
@@ -142,49 +99,126 @@ interface SessionDetails {
   permissionMode?: ActiveSession["permissionMode"];
 }
 
-/** Extract all session details in a single pass over the tail of the JSONL */
 /**
- * Accurate per-session cost + message count over the WHOLE transcript, using
- * per-token-type rates (input/output/cache-read/cache-creation) — not the old
- * blended estimate over just the tail. Cached by file mtime+size so unchanged
- * sessions aren't re-read on every 3s live refresh; only growing (active)
- * sessions recompute.
+ * Aggregates from a single forward pass over a session JSONL. Cost and
+ * contextUsage are DERIVED from these per call (cheap arithmetic), so a
+ * cache-hit still picks up cross-session 1M-context promotion; only the file
+ * read is cached. Sums (tokens, messageCount) and last-wins fields (lastModel,
+ * lastMessage, permRaw, lastCtxTokens) compose correctly over append-only logs,
+ * which is what lets us read only the newly-appended bytes of a growing session.
  */
-const costCache = new Map<string, { mtimeMs: number; size: number; cost: number; messageCount: number }>();
-function computeSessionCostAndCount(filePath: string): { cost: number; messageCount: number } {
-  try {
-    const st = fs.statSync(filePath);
-    const hit = costCache.get(filePath);
-    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
-      return { cost: hit.cost, messageCount: hit.messageCount };
+interface ParsedSession {
+  input: number; output: number; cacheCreation: number; cacheRead: number;
+  firstModel: string;   // pricing follows the first model that reported usage
+  lastModel: string;    // context window follows the most recent model
+  messageCount: number; // assistant records
+  lastCtxTokens: number; ctxFound: boolean; maxCtxTokens: number;
+  lastMessage?: string;
+  permRaw?: string;
+  sizeBytes: number;
+}
+interface ParseState extends ParsedSession { mtimeMs: number; offset: number; }
+
+function freshParse(): ParseState {
+  return {
+    input: 0, output: 0, cacheCreation: 0, cacheRead: 0,
+    firstModel: "", lastModel: "", messageCount: 0,
+    lastCtxTokens: 0, ctxFound: false, maxCtxTokens: 0,
+    lastMessage: undefined, permRaw: undefined, sizeBytes: 0, mtimeMs: 0, offset: 0,
+  };
+}
+
+/** Fold one JSONL line into the running aggregates. */
+function applyRecord(state: ParseState, line: string): void {
+  if (!line) return;
+  let r: any;
+  try { r = JSON.parse(line); } catch { return; }
+  if (r.type === "assistant") {
+    state.messageCount++;
+    const u = r.message?.usage;
+    if (u) {
+      const inp = u.input_tokens || 0;
+      const cc = u.cache_creation_input_tokens || 0;
+      const cr = u.cache_read_input_tokens || 0;
+      state.input += inp;
+      state.output += u.output_tokens || 0;
+      state.cacheCreation += cc;
+      state.cacheRead += cr;
+      const ctx = inp + cc + cr;
+      if (ctx > state.maxCtxTokens) state.maxCtxTokens = ctx;
+      state.lastCtxTokens = ctx;
+      state.ctxFound = true;
+      const m = r.message?.model;
+      if (m) { if (!state.firstModel) state.firstModel = m; state.lastModel = m; }
     }
-    const content = fs.readFileSync(filePath, "utf-8");
-    let input = 0, output = 0, cc = 0, cr = 0, model = "", messageCount = 0;
-    for (const line of content.split("\n")) {
-      if (!line) continue;
-      try {
-        const r = JSON.parse(line);
-        if (r.type !== "assistant") continue;
-        messageCount++;
-        const u = r.message?.usage;
-        if (u) {
-          input += u.input_tokens || 0;
-          output += u.output_tokens || 0;
-          cc += u.cache_creation_input_tokens || 0;
-          cr += u.cache_read_input_tokens || 0;
-          if (!model && r.message?.model) model = r.message.model;
+  } else if (r.type === "user") {
+    const content = r.message?.content;
+    if (typeof content === "string") {
+      if (content.length > 5) state.lastMessage = content.replace(/\n/g, " ").trim().slice(0, 4000);
+    } else if (Array.isArray(content)) {
+      for (const item of content) {
+        if (item?.type === "text" && typeof item.text === "string" && item.text.length > 5) {
+          state.lastMessage = item.text.replace(/\n/g, " ").trim().slice(0, 4000);
+          break;
         }
-      } catch {}
+      }
     }
-    const cost = Math.round(computeCost(getModelPricingShared(model), input, output, cr, cc) * 100) / 100;
-    const result = { cost, messageCount };
-    costCache.set(filePath, { mtimeMs: st.mtimeMs, size: st.size, ...result });
-    // Keep the cache from growing unbounded across many sessions.
-    if (costCache.size > 500) { const k = costCache.keys().next().value; if (k) costCache.delete(k); }
-    return result;
-  } catch {
-    return { cost: 0, messageCount: 0 };
+  } else if (r.type === "permission-mode") {
+    if (r.permissionMode) state.permRaw = r.permissionMode;
   }
+}
+
+/**
+ * Parse a session JSONL into aggregates, caching the file read. Unchanged files
+ * (same mtime+size) return cached aggregates with zero reads; a grown file is
+ * read incrementally from the last consumed line boundary; a shrunk/rewritten
+ * file (e.g. context compaction) is re-parsed from the start.
+ */
+const parseCache = new Map<string, ParseState>();
+function parseSessionFile(filePath: string): ParsedSession {
+  let st: fs.Stats;
+  try { st = fs.statSync(filePath); } catch { return freshParse(); }
+
+  const prev = parseCache.get(filePath);
+  if (prev && prev.mtimeMs === st.mtimeMs && prev.sizeBytes === st.size) return prev;
+
+  let state: ParseState;
+  let startOffset: number;
+  if (prev && st.size > prev.sizeBytes && prev.offset <= st.size) {
+    state = prev;            // append-only growth — continue from last boundary
+    startOffset = prev.offset;
+  } else {
+    state = freshParse();    // new, or shrunk/rewritten — full re-parse
+    startOffset = 0;
+  }
+
+  if (st.size > startOffset) {
+    let fd: number | null = null;
+    try {
+      const len = st.size - startOffset;
+      const buf = Buffer.alloc(len);
+      fd = fs.openSync(filePath, "r");
+      fs.readSync(fd, buf, 0, len, startOffset);
+      // Process only up to the last newline so we never parse a half-written
+      // line; \n is ASCII, so cutting there can't split a multibyte UTF-8 char.
+      const lastNl = buf.lastIndexOf(0x0A);
+      if (lastNl >= 0) {
+        for (const line of buf.toString("utf-8", 0, lastNl).split("\n")) applyRecord(state, line.trim());
+        state.offset = startOffset + lastNl + 1;
+      }
+    } catch {
+      // Partial/failed read — keep whatever aggregates we have.
+    } finally {
+      if (fd !== null) try { fs.closeSync(fd); } catch {}
+    }
+  }
+
+  state.mtimeMs = st.mtimeMs;
+  state.sizeBytes = st.size;
+  parseCache.set(filePath, state);
+  // Keep the cache from growing unbounded across many sessions.
+  if (parseCache.size > 500) { const k = parseCache.keys().next().value; if (k) parseCache.delete(k); }
+  return state;
 }
 
 /** Collapse a model id to its family for context-window tracking. */
@@ -200,127 +234,74 @@ function modelFamily(model: string): string {
  *  permission mode from a session JSONL. Exported for unit testing — this is the
  *  stable contract the live-scanner perf refactor must preserve. */
 export function getSessionDetails(filePath: string): SessionDetails {
-  let contextUsage: ActiveSession["contextUsage"];
-  let lastMessage: string | undefined;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-  let model = "";
-  let sizeBytes = 0;
-  let lastCtxTokens = 0;   // current context = last assistant record's tokens
-  let lastCtxFound = false;
-  let maxCtxTokens = 0;    // peak context observed in this file
-
-  try {
-    sizeBytes = fs.statSync(filePath).size;
-  } catch {}
-
-  // Read the tail for the *current* context size (last assistant message).
-  const tailLines = readTailLines(filePath, 65536);
-  for (const line of tailLines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const record = JSON.parse(trimmed);
-      if (!lastCtxFound && record.type === "assistant" && record.message?.usage) {
-        const u = record.message.usage;
-        model = record.message.model || "";
-        lastCtxTokens = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-        lastCtxFound = true;
-      }
-    } catch {}
-  }
-
-  // Read larger tail for last human message + count messages + total tokens for cost
-  const bigLines = readTailLines(filePath, Math.min(sizeBytes, 1048576));
-  let messageCount = 0;
-  let foundLastMsg = false;
-
-  for (const line of bigLines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const record = JSON.parse(trimmed);
-
-      // Count human user messages and assistant messages
-      if (record.type === "assistant") {
-        messageCount++;
-        const u = record.message?.usage;
-        if (u) {
-          const ctx = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-          if (ctx > maxCtxTokens) maxCtxTokens = ctx;
-          totalInputTokens += ctx;
-          totalOutputTokens += u.output_tokens || 0;
-          if (!model && record.message?.model) model = record.message.model;
-        }
-      }
-
-      // Find last human text message
-      if (!foundLastMsg && record.type === "user") {
-        const content = record.message?.content;
-        if (typeof content === "string" && content.length > 5) {
-          lastMessage = content.replace(/\n/g, " ").trim().slice(0, 4000);
-          foundLastMsg = true;
-        } else if (Array.isArray(content)) {
-          for (const item of content) {
-            if (item?.type === "text" && typeof item.text === "string" && item.text.length > 5) {
-              lastMessage = item.text.replace(/\n/g, " ").trim().slice(0, 4000);
-              foundLastMsg = true;
-              break;
-            }
-          }
-        }
-      }
-    } catch {}
-  }
+  const p = parseSessionFile(filePath);
 
   // Build context usage with a proof-based window. A 200K-window session can
   // never exceed 200K (it auto-compacts first), so any observation >200K — in
   // this file's peak OR persisted historically for the family — proves the 1M
   // beta is in effect. Feeding that max into getMaxTokens fixes the case where a
   // 1M session currently sits below 200K and would otherwise read against 200K
-  // (e.g. 198K showing 99% instead of ~20%).
-  if (lastCtxFound || maxCtxTokens > 0) {
-    const tokensUsed = lastCtxFound ? lastCtxTokens : maxCtxTokens;
-    const family = modelFamily(model);
-    if (maxCtxTokens > 0) storage.recordObservedContext(family, maxCtxTokens);
-    const effectiveObserved = Math.max(maxCtxTokens, storage.getObservedMaxContext(family));
-    const maxTokens = getMaxTokens(model, effectiveObserved);
+  // (e.g. 198K showing 99% instead of ~20%). Derived per call (not cached with
+  // the parse) so a peak proven by ANY session promotes this one's window too.
+  let contextUsage: ActiveSession["contextUsage"];
+  if (p.ctxFound || p.maxCtxTokens > 0) {
+    const tokensUsed = p.ctxFound ? p.lastCtxTokens : p.maxCtxTokens;
+    const family = modelFamily(p.lastModel);
+    if (p.maxCtxTokens > 0) storage.recordObservedContext(family, p.maxCtxTokens);
+    const effectiveObserved = Math.max(p.maxCtxTokens, storage.getObservedMaxContext(family));
+    const maxTokens = getMaxTokens(p.lastModel, effectiveObserved);
     // Measure against the usable budget (not the raw window) so the bar matches
     // Claude Code's terminal meter, which reserves space for output + auto-compact.
-    const usableTokens = getUsableContext(model, effectiveObserved);
+    const usableTokens = getUsableContext(p.lastModel, effectiveObserved);
     const percentage = Math.min(100, Math.round((tokensUsed / usableTokens) * 100));
-    contextUsage = { tokensUsed, maxTokens, usableTokens, percentage, model };
+    contextUsage = { tokensUsed, maxTokens, usableTokens, percentage, model: p.lastModel };
   }
 
-  // Accurate cost + message count over the whole transcript with per-type rates
-  // (mtime-cached). Replaces the old tail-only blended estimate, which both
-  // undercounted large sessions and mis-blended cache-creation vs cache-read.
-  const { cost: costEstimate, messageCount: accurateMessageCount } = computeSessionCostAndCount(filePath);
-
-  // Per-session permission mode from the last "permission-mode" record. It's
-  // usually written at session start (head), but can be toggled mid-session
-  // (tail), so prefer the latest. bigLines is reverse-ordered → first match is
-  // the most recent; fall back to the head if it's outside the tail window.
-  let permRaw: string | undefined;
-  for (const line of bigLines) {
-    if (line.indexOf('"permission-mode"') === -1) continue;
-    try { const r = JSON.parse(line.trim()); if (r.type === "permission-mode" && r.permissionMode) { permRaw = r.permissionMode; break; } } catch {}
-  }
-  if (!permRaw) {
-    for (const line of readHeadLines(filePath)) {
-      if (line.indexOf('"permission-mode"') === -1) continue;
-      try { const r = JSON.parse(line.trim()); if (r.type === "permission-mode" && r.permissionMode) permRaw = r.permissionMode; } catch {}
-    }
-  }
+  // Accurate cost over the whole transcript with per-token-type rates. Pricing
+  // follows the first model that reported usage (the session's primary model).
+  const costEstimate = Math.round(
+    computeCost(getModelPricingShared(p.firstModel), p.input, p.output, p.cacheRead, p.cacheCreation) * 100,
+  ) / 100;
 
   return {
     contextUsage,
-    lastMessage,
-    messageCount: accurateMessageCount || messageCount,
-    sizeBytes,
+    lastMessage: p.lastMessage,
+    messageCount: p.messageCount,
+    sizeBytes: p.sizeBytes,
     costEstimate,
-    permissionMode: mapPermissionMode(permRaw),
+    permissionMode: mapPermissionMode(p.permRaw),
   };
+}
+
+/** Populate a session's history-derived fields (context %, last message, count,
+ *  size, cost, status, permission mode) plus git branch and pin state. Shared by
+ *  the listed-session and orphaned-agent paths so hasHistory and every derived
+ *  field are set identically in both — previously hasHistory was only set on the
+ *  listed-session path, leaving orphaned-agent sessions with it undefined. */
+function enrichSession(
+  s: ActiveSession,
+  sessionFile: string | null,
+  fallbackPermissionMode: ActiveSession["permissionMode"],
+  pinnedSet: Set<string>,
+  nowMs: number,
+): void {
+  s.hasHistory = !!sessionFile;
+  if (sessionFile) {
+    const details = getSessionDetails(sessionFile);
+    s.contextUsage = details.contextUsage;
+    s.lastMessage = details.lastMessage;
+    s.messageCount = details.messageCount;
+    s.sizeBytes = details.sizeBytes;
+    s.costEstimate = details.costEstimate;
+    // Permission mode — per-session from the JSONL, global as fallback.
+    s.permissionMode = details.permissionMode ?? fallbackPermissionMode;
+    s.status = getSessionStatus(sessionFile, nowMs);
+  } else {
+    s.status = "stale";
+    s.permissionMode = fallbackPermissionMode;
+  }
+  s.gitBranch = getGitBranch(s.cwd);
+  s.isPinned = pinnedSet.has(s.sessionId);
 }
 
 /** Get real-time live data — called on-demand per request, not during full scan */
@@ -328,6 +309,16 @@ export function getLiveData(): LiveData {
   const activeSessions: ActiveSession[] = [];
   const nowMs = Date.now();
   const projectsDir = normPath(CLAUDE_DIR, "projects");
+  // List the project directories once per call — both the active-agent scan and
+  // findSessionFile() would otherwise re-read this directory per session (N+1).
+  let projDirNames: string[] = [];
+  if (dirExists(projectsDir)) {
+    try {
+      projDirNames = fs.readdirSync(projectsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+    } catch {}
+  }
 
   // 1. Read ~/.claude/sessions/*.json for active sessions
   const sessionsDir = normPath(CLAUDE_DIR, "sessions");
@@ -352,23 +343,15 @@ export function getLiveData(): LiveData {
         };
 
         // 2. Check for active agents in this session's subagents directory
-        if (dirExists(projectsDir)) {
-          try {
-            const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-            for (const projDir of projDirs) {
-              if (!projDir.isDirectory()) continue;
-              // Check subagents directly in the project dir
-              const subagentsPath = normPath(projectsDir, projDir.name, "subagents");
-              findActiveAgents(subagentsPath, session, nowMs);
+        for (const projName of projDirNames) {
+          // Check subagents directly in the project dir
+          findActiveAgents(normPath(projectsDir, projName, "subagents"), session, nowMs);
 
-              // Check subagents inside session subdirectories
-              const sessionSubDir = normPath(projectsDir, projDir.name, data.sessionId);
-              if (dirExists(sessionSubDir)) {
-                const subPath = normPath(sessionSubDir, "subagents");
-                findActiveAgents(subPath, session, nowMs);
-              }
-            }
-          } catch {}
+          // Check subagents inside session subdirectories
+          const sessionSubDir = normPath(projectsDir, projName, data.sessionId);
+          if (dirExists(sessionSubDir)) {
+            findActiveAgents(normPath(sessionSubDir, "subagents"), session, nowMs);
+          }
         }
 
         activeSessions.push(session);
@@ -390,91 +373,49 @@ export function getLiveData(): LiveData {
       active.projectKey = cached.projectKey;
     }
 
-    // 2c. Extract context usage, last message, message count, size, cost from session JSONL
-    const sessionFile = findSessionFile(active.sessionId, projectsDir);
-    active.hasHistory = !!sessionFile;
-    if (sessionFile) {
-      const details = getSessionDetails(sessionFile);
-      active.contextUsage = details.contextUsage;
-      active.lastMessage = details.lastMessage;
-      active.messageCount = details.messageCount;
-      active.sizeBytes = details.sizeBytes;
-      active.costEstimate = details.costEstimate;
-      // 2e. Permission mode — per-session from the JSONL, global as fallback.
-      active.permissionMode = details.permissionMode ?? permissionMode;
-
-      // 2d. Detect session status from JSONL mtime
-      active.status = getSessionStatus(sessionFile, nowMs);
-    } else {
-      active.status = "stale";
-      active.permissionMode = permissionMode;
-    }
-
-    // 2f. Git branch from cwd
-    active.gitBranch = getGitBranch(active.cwd);
-
-    // 2g-a. Pin status
-    active.isPinned = pinnedSet.has(active.sessionId);
+    // 2c. Context %, last message, count, size, cost, status, permission, git, pin
+    const sessionFile = findSessionFile(active.sessionId, projectsDir, projDirNames);
+    enrichSession(active, sessionFile, permissionMode, pinnedSet, nowMs);
   }
 
   // 2g. Discover agents from sessions NOT in ~/.claude/sessions/ (orphaned/unlisted)
   //     Scan all session subdirs for recently-modified agent files
   const knownSessionIds = new Set(activeSessions.map(s => s.sessionId));
-  if (dirExists(projectsDir)) {
+  for (const projName of projDirNames) {
+    const projPath = normPath(projectsDir, projName);
     try {
-      const projDirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-      for (const projDir of projDirs) {
-        if (!projDir.isDirectory()) continue;
-        const projPath = normPath(projectsDir, projDir.name);
-        try {
-          const entries = fs.readdirSync(projPath, { withFileTypes: true });
-          for (const entry of entries) {
-            // Session subdirs are UUID-named directories
-            if (!entry.isDirectory() || !/^[0-9a-f]{8}-/.test(entry.name)) continue;
-            const sessionId = entry.name;
-            if (knownSessionIds.has(sessionId)) continue; // Already processed
-            const subagentsPath = normPath(projPath, sessionId, "subagents");
-            if (!dirExists(subagentsPath)) continue;
+      const entries = fs.readdirSync(projPath, { withFileTypes: true });
+      for (const entry of entries) {
+        // Session subdirs are UUID-named directories
+        if (!entry.isDirectory() || !/^[0-9a-f]{8}-/.test(entry.name)) continue;
+        const sessionId = entry.name;
+        if (knownSessionIds.has(sessionId)) continue; // Already processed
+        const subagentsPath = normPath(projPath, sessionId, "subagents");
+        if (!dirExists(subagentsPath)) continue;
 
-            // Check if any agent files are recent enough
-            const tempSession: ActiveSession = {
-              pid: 0,
-              sessionId,
-              cwd: "",
-              startedAt: 0,
-              activeAgents: [],
-            };
-            findActiveAgents(subagentsPath, tempSession, nowMs);
-            if (tempSession.activeAgents.length === 0) continue;
+        // Check if any agent files are recent enough
+        const tempSession: ActiveSession = {
+          pid: 0,
+          sessionId,
+          cwd: "",
+          startedAt: 0,
+          activeAgents: [],
+        };
+        findActiveAgents(subagentsPath, tempSession, nowMs);
+        if (tempSession.activeAgents.length === 0) continue;
 
-            // Found active agents — create a session entry for them
-            const cached = sessionMap.get(sessionId);
-            if (cached) {
-              tempSession.firstMessage = cached.firstMessage;
-              tempSession.slug = cached.slug;
-              tempSession.projectKey = cached.projectKey;
-              tempSession.cwd = (cached.cwd || "").replace(/\\/g, "/");
-            }
-            const sessionFile = findSessionFile(sessionId, projectsDir);
-            if (sessionFile) {
-              const details = getSessionDetails(sessionFile);
-              tempSession.contextUsage = details.contextUsage;
-              tempSession.lastMessage = details.lastMessage;
-              tempSession.messageCount = details.messageCount;
-              tempSession.sizeBytes = details.sizeBytes;
-              tempSession.costEstimate = details.costEstimate;
-              tempSession.permissionMode = details.permissionMode ?? permissionMode;
-              tempSession.status = getSessionStatus(sessionFile, nowMs);
-            } else {
-              tempSession.status = "stale";
-              tempSession.permissionMode = permissionMode;
-            }
-            tempSession.gitBranch = getGitBranch(tempSession.cwd);
-            tempSession.isPinned = pinnedSet.has(sessionId);
-            activeSessions.push(tempSession);
-            knownSessionIds.add(sessionId);
-          }
-        } catch {}
+        // Found active agents — create a session entry for them
+        const cached = sessionMap.get(sessionId);
+        if (cached) {
+          tempSession.firstMessage = cached.firstMessage;
+          tempSession.slug = cached.slug;
+          tempSession.projectKey = cached.projectKey;
+          tempSession.cwd = (cached.cwd || "").replace(/\\/g, "/");
+        }
+        const sessionFile = findSessionFile(sessionId, projectsDir, projDirNames);
+        enrichSession(tempSession, sessionFile, permissionMode, pinnedSet, nowMs);
+        activeSessions.push(tempSession);
+        knownSessionIds.add(sessionId);
       }
     } catch {}
   }
