@@ -3,6 +3,9 @@ export type GraphNodeType = EntityType | "session" | "agent" | "custom";
 
 export type CustomNodeSubType = "service" | "database" | "api" | "cicd" | "deploy" | "queue" | "cache" | "other";
 
+/** Where a graph node/edge came from — manual placement vs an auto-detected source. */
+export type NodeOrigin = "manual" | "config-file" | "api-config" | "ai-suggested" | "docker-compose" | "auto-discovered";
+
 export interface CustomNode {
   id: string;
   subType: CustomNodeSubType;
@@ -11,7 +14,7 @@ export interface CustomNode {
   url?: string;
   icon?: string;
   color?: string;
-  source: "manual" | "config-file" | "api-config" | "ai-suggested" | "docker-compose" | "auto-discovered";
+  source: NodeOrigin;
 }
 
 export interface CustomEdge {
@@ -21,7 +24,7 @@ export interface CustomEdge {
   label: string;
   color?: string;
   dashed?: boolean;
-  source_origin: "manual" | "config-file" | "api-config" | "ai-suggested" | "docker-compose" | "auto-discovered";
+  source_origin: NodeOrigin;
 }
 
 // API registry types
@@ -282,7 +285,7 @@ export interface GraphNode {
   subType?: CustomNodeSubType;
   color?: string;
   url?: string;
-  source?: string;  // origin of custom node
+  source?: NodeOrigin;  // origin of custom node
 }
 
 export interface GraphEdge {
@@ -482,6 +485,13 @@ export interface InferredProjectAgg {
  *  no inferred project". Shared so the server filter and the client dropdown
  *  option can't drift out of sync. */
 export const INFERRED_PROJECT_NONE = "(none)";
+
+/** Response of GET /api/sessions/inferred-projects — shared so the server payload
+ *  and the client query type stay in sync. */
+export interface InferredProjectsResponse {
+  projects: InferredProjectAgg[];
+  unbucketed: { sessionCount: number; totalSize: number };
+}
 
 export interface SessionSummary {
   sessionId: string;

@@ -13,7 +13,7 @@ import { getSessionCost } from "../scanner/session-analytics";
 import { getSessionCommits } from "../scanner/commit-linker";
 import { getSessionDiffs } from "../scanner/session-diffs";
 import { checkClaudeAvailable } from "../scanner/claude-runner";
-import { INFERRED_PROJECT_NONE } from "@shared/types";
+import { INFERRED_PROJECT_NONE, type InferredProjectsResponse } from "@shared/types";
 import { getFileTimeline } from "../scanner/file-timeline";
 import { runNLQuery } from "../scanner/nl-query";
 import { getContinuationBrief } from "../scanner/continuation-detector";
@@ -203,7 +203,8 @@ router.get("/api/sessions/inferred-projects", (_req: Request, res: Response) => 
   const projects = Array.from(agg.entries())
     .map(([project, v]) => ({ project, ...v }))
     .sort((a, b) => b.sessionCount - a.sessionCount);
-  res.json({ projects, unbucketed: { sessionCount: unbucketed, totalSize: unbucketedSize } });
+  const payload: InferredProjectsResponse = { projects, unbucketed: { sessionCount: unbucketed, totalSize: unbucketedSize } };
+  res.json(payload);
 });
 
 /** GET /api/sessions/search — Deep search across all session content */

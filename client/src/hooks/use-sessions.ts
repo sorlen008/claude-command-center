@@ -7,7 +7,7 @@ import type {
   ProjectDashboardResult, SessionDiffsResult, PromptTemplate, WeeklyDigest, WorkflowConfig,
   SessionNote, FileTimelineResult, NLQueryResult,
   ContinuationBrief, Decision, BashKnowledgeBase, BashSearchResult,
-  NerveCenterData, DelegationResult, InferredProjectAgg,
+  NerveCenterData, DelegationResult, InferredProjectsResponse,
 } from "@shared/types";
 
 export function useSessions(params?: { q?: string; sort?: string; order?: string; hideEmpty?: boolean; activeOnly?: boolean; project?: string; inferredProject?: string; page?: number; limit?: number }) {
@@ -28,7 +28,7 @@ export function useSessions(params?: { q?: string; sort?: string; order?: string
 }
 
 export function useInferredProjects() {
-  return useQuery<{ projects: InferredProjectAgg[]; unbucketed: { sessionCount: number; totalSize: number } }>({
+  return useQuery<InferredProjectsResponse>({
     queryKey: ["/api/sessions/inferred-projects"],
     staleTime: 30_000,
   });
