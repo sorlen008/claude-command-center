@@ -119,8 +119,19 @@ export async function deepSearch(params: {
   const { query, sessions, field = "all", dateFrom, dateTo, project, summaries = {}, limit = 50 } = params;
   const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
 
+  // Fingerprint the session set so the cache invalidates when sessions change
+  // (new messages bump lastTs; added/removed sessions change the count/size) —
+  // keying on query params alone would serve stale hits for up to the TTL.
+  let maxLastTs = "";
+  let sumSize = 0;
+  for (const s of sessions) {
+    if (s.lastTs && s.lastTs > maxLastTs) maxLastTs = s.lastTs;
+    sumSize += s.sizeBytes || 0;
+  }
+  const fingerprint = `${sessions.length}:${maxLastTs}:${sumSize}`;
+
   // Check cache
-  const cacheKey = JSON.stringify({ query: queryWords.join(" "), field, dateFrom, dateTo, project, limit });
+  const cacheKey = JSON.stringify({ query: queryWords.join(" "), field, dateFrom, dateTo, project, limit, fingerprint });
   if (cachedQuery === cacheKey && cachedResult && Date.now() - cachedAt < CACHE_TTL_MS) {
     return cachedResult;
   }

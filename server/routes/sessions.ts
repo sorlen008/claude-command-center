@@ -12,6 +12,7 @@ import { summarizeSession, summarizeBatch } from "../scanner/session-summarizer"
 import { getSessionCost } from "../scanner/session-analytics";
 import { getSessionCommits } from "../scanner/commit-linker";
 import { getSessionDiffs } from "../scanner/session-diffs";
+import { INFERRED_PROJECT_NONE } from "@shared/types";
 import { getFileTimeline } from "../scanner/file-timeline";
 import { runNLQuery } from "../scanner/nl-query";
 import { getContinuationBrief } from "../scanner/continuation-detector";
@@ -130,7 +131,7 @@ router.get("/api/sessions", (req: Request, res: Response) => {
     });
   }
   if (inferredProject) {
-    sessions = inferredProject === "(none)"
+    sessions = inferredProject === INFERRED_PROJECT_NONE
       ? sessions.filter(s => !s.inferredProject)
       : sessions.filter(s => s.inferredProject === inferredProject);
   }
@@ -159,8 +160,11 @@ router.get("/api/sessions", (req: Request, res: Response) => {
   });
 
   const total = sessions.length;
-  const totalPages = Math.ceil(total / limit);
   const cappedTotal = Math.min(total, MAX_SESSIONS_RESPONSE);
+  // Page count reflects what's actually servable (the response is capped at
+  // MAX_SESSIONS_RESPONSE), so the client doesn't render phantom empty pages
+  // past the cap. `total` stays the true count and `capped` flags the cut.
+  const totalPages = Math.ceil(cappedTotal / limit);
   const start = (page - 1) * limit;
   const paged = sessions.slice(start, Math.min(start + limit, cappedTotal));
 
@@ -186,7 +190,7 @@ router.get("/api/sessions", (req: Request, res: Response) => {
     sessions: annotated,
     stats,
     canUndo: lastDeleteBatch.length > 0,
-    pagination: { page, limit, total, totalPages },
+    pagination: { page, limit, total, totalPages, capped: total > cappedTotal },
   });
 });
 

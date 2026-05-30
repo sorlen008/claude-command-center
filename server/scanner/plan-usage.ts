@@ -103,9 +103,11 @@ async function collectAllTurns(sessions: SessionMetaLite[], claudeProjectsDir: s
 
 /**
  * Reconstruct the current 5-hour session window.
- * Anthropic opens a new session when the gap since the last turn exceeds `durationHours`.
- * We walk backwards from the most recent turn, grouping consecutive turns whose
- * gap-to-previous is < durationHours; that cluster is the current window.
+ * Returns null if the most recent turn is itself older than `durationHours`
+ * (no window is currently open). Otherwise the window is every turn within
+ * `durationHours` of the most recent turn — a fixed look-back from the latest
+ * activity, not gap-based clustering. A 24-hour pre-filter drops turns that
+ * are definitely from an earlier session before the window is measured.
  */
 export function detectCurrentWindow(turns: TurnWithCost[], durationHours: number, now: Date = new Date()): SessionWindowUsage | null {
   if (turns.length === 0) return null;

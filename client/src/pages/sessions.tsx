@@ -20,6 +20,7 @@ import {
   Pencil, Briefcase,
 } from "lucide-react";
 import type { SessionData, DeepSearchMatch } from "@shared/types";
+import { INFERRED_PROJECT_NONE } from "@shared/types";
 import { formatBytes, relativeTime as _relativeTime, formatDuration } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 
@@ -248,7 +249,7 @@ export default function Sessions() {
               </option>
             ))}
             {inferredProjectsList.data?.unbucketed.sessionCount ? (
-              <option value="(none)">(uncategorized) ({inferredProjectsList.data.unbucketed.sessionCount})</option>
+              <option value={INFERRED_PROJECT_NONE}>(uncategorized) ({inferredProjectsList.data.unbucketed.sessionCount})</option>
             ) : null}
           </select>
           <select

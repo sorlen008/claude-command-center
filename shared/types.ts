@@ -478,6 +478,11 @@ export interface InferredProjectAgg {
   totalEdits: number;
 }
 
+/** Sentinel value of the `inferredProject` filter param meaning "sessions with
+ *  no inferred project". Shared so the server filter and the client dropdown
+ *  option can't drift out of sync. */
+export const INFERRED_PROJECT_NONE = "(none)";
+
 export interface SessionSummary {
   sessionId: string;
   summary: string;
