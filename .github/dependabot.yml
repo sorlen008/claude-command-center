@@ -1,0 +1,40 @@
+# Dependabot configuration.
+# Security updates (vulnerability-driven PRs like #16) are controlled separately
+# in Settings > Code security and stay on regardless of this file. This file adds
+# *version* updates — routine "stay current" PRs — tuned for low noise.
+version: 2
+updates:
+  # ---- npm (package.json / package-lock.json) ----
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"            # runtime deps
+      prefix-development: "chore(deps-dev)"  # devDependencies
+    groups:
+      # Bundle all safe (non-breaking) updates into ONE PR per week to cut noise.
+      # Major bumps are intentionally excluded here so they arrive as individual
+      # PRs and get reviewed one at a time.
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ---- GitHub Actions (keep the SHA-pinned actions in .github/workflows current) ----
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
